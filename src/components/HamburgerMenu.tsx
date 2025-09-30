@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../hooks/useTheme';
 import './HamburgerMenu.css';
 
 interface HamburgerMenuProps {
@@ -10,7 +9,6 @@ interface HamburgerMenuProps {
 export function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { signOut } = useAuth();
-  const { theme, toggleTheme } = useTheme();
 
   const handleSignOut = async () => {
     try {
@@ -58,11 +56,6 @@ export function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
               <li>
                 <button onClick={() => handleNavigation('export')}>
                   Export Calendar
-                </button>
-              </li>
-              <li>
-                <button onClick={toggleTheme}>
-                  Theme: {theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'System'}
                 </button>
               </li>
               <li className="menu-divider"></li>
