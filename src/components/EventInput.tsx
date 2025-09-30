@@ -20,18 +20,26 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     if (!user) throw new Error('Not authenticated');
 
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-    const [tokenUsage, uploadQuota] = await Promise.all([
+    let [tokenUsage, uploadQuota] = await Promise.all([
       DatabaseService.getTokenUsage(user.id, currentMonth),
       DatabaseService.getUploadQuota(user.id, currentMonth),
     ]);
 
+    if (!tokenUsage) {
+      tokenUsage = await DatabaseService.createOrUpdateTokenUsage(user.id, currentMonth, 0, 500);
+    }
+
+    if (!uploadQuota) {
+      uploadQuota = await DatabaseService.createOrUpdateUploadQuota(user.id, currentMonth, 0, 1);
+    }
+
     if (isFileUpload) {
-      if (!uploadQuota || uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
+      if (uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
         throw new Error('Upload quota exceeded. Please upgrade your plan or wait until next month.');
       }
     }
 
-    if (!tokenUsage || tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
+    if (tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
       throw new Error('Token quota exceeded. Please upgrade your plan or wait until next month.');
     }
 
@@ -169,7 +177,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
               className="btn btn-primary"
               disabled={loading || !textInput.trim()}
             >
-              {loading ? 'Processing...' : 'Extract Events'}
+              {loading ? 'Processing...' : 'Create Event(s)'}
             </button>
           </div>
         </div>
@@ -218,7 +226,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
             className="btn btn-primary"
             disabled={loading || !selectedFile}
           >
-            {loading ? 'Processing...' : 'Extract Events from File'}
+            {loading ? 'Processing...' : 'Create Event(s) from File'}
           </button>
         </div>
       )}

@@ -62,7 +62,7 @@ export function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
               </li>
               <li>
                 <button onClick={toggleTheme}>
-                  Theme: {theme === 'dark' ? 'Dark' : 'Light'}
+                  Theme: {theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'System'}
                 </button>
               </li>
               <li className="menu-divider"></li>

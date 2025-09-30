@@ -6,6 +6,10 @@ import { AuthPage } from './pages/AuthPage';
 import { LandingPage } from './pages/LandingPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { EventConfirmation } from './pages/EventConfirmation';
+import { SettingsPage } from './pages/SettingsPage';
+import { AccountPage } from './pages/AccountPage';
+import { SubscriptionPage } from './pages/SubscriptionPage';
+import { ExportPage } from './pages/ExportPage';
 import type { ParsedEvent } from './services/openai';
 import { DatabaseService } from './services/database';
 import './styles/theme.css';
@@ -125,16 +129,20 @@ function AppContent() {
     );
   }
 
-  if (currentPage === 'settings' || currentPage === 'account' || currentPage === 'subscription' || currentPage === 'export') {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '24px' }}>
-        <h1>{currentPage.charAt(0).toUpperCase() + currentPage.slice(1)} Page</h1>
-        <p style={{ color: 'var(--text-secondary)' }}>This page is coming soon!</p>
-        <button className="btn btn-primary" onClick={() => setCurrentPage('landing')}>
-          Back to Home
-        </button>
-      </div>
-    );
+  if (currentPage === 'settings') {
+    return <SettingsPage onNavigate={handleNavigate} />;
+  }
+
+  if (currentPage === 'account') {
+    return <AccountPage onNavigate={handleNavigate} />;
+  }
+
+  if (currentPage === 'subscription') {
+    return <SubscriptionPage onNavigate={handleNavigate} />;
+  }
+
+  if (currentPage === 'export') {
+    return <ExportPage onNavigate={handleNavigate} />;
   }
 
   return (
