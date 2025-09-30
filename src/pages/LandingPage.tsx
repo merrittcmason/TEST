@@ -1,6 +1,7 @@
 import { HamburgerMenu } from '../components/HamburgerMenu';
 import { SubscriptionCard } from '../components/SubscriptionCard';
 import { WeekAtAGlance } from '../components/WeekAtAGlance';
+import { Notifications } from '../components/Notifications';
 import './LandingPage.css';
 
 interface LandingPageProps {
@@ -21,6 +22,7 @@ export function LandingPage({ onNavigate, onDateClick }: LandingPageProps) {
         <main className="landing-content">
           <SubscriptionCard />
           <WeekAtAGlance onDateClick={onDateClick} />
+          <Notifications />
         </main>
       </div>
     </div>
