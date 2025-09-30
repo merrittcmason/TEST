@@ -63,13 +63,11 @@ export function SubscriptionCard() {
   };
 
   return (
-    <div className="subscription-card-wrapper">
-      <h2 className="section-title">Account</h2>
-      <div className="subscription-card">
-        <div className="subscription-header">
-          <h3>{userData.name || user?.email}</h3>
-          <span className="plan-badge">{getPlanDisplay(userData.plan_type)}</span>
-        </div>
+    <div className="subscription-card">
+      <div className="subscription-header">
+        <h3>{userData.name || user?.email}</h3>
+        <span className="plan-badge">{getPlanDisplay(userData.plan_type)}</span>
+      </div>
 
       <div className="quota-section">
         <div className="quota-header">
@@ -96,7 +94,6 @@ export function SubscriptionCard() {
             {uploadQuota?.uploads_used || 0} / {uploadQuota?.uploads_limit || 0} remaining
           </span>
         </div>
-      </div>
       </div>
     </div>
   );

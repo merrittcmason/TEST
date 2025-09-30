@@ -1,11 +1,8 @@
 import { format, addDays, subDays, startOfDay } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
-import type { Database } from '../lib/supabase';
 import './WeekAtAGlance.css';
-
-type Event = Database['public']['Tables']['events']['Row'];
 
 interface WeekAtAGlanceProps {
   onDateClick: (date: Date) => void;
@@ -14,44 +11,48 @@ interface WeekAtAGlanceProps {
 export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
   const { user } = useAuth();
   const [dates, setDates] = useState<Date[]>([]);
-  const [eventsMap, setEventsMap] = useState<Map<string, Event[]>>(new Map());
+  const [eventCounts, setEventCounts] = useState<Map<string, number>>(new Map());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const today = startOfDay(new Date());
     const generatedDates: Date[] = [];
 
-    for (let i = -2; i <= 2; i++) {
+    for (let i = -3; i <= 14; i++) {
       generatedDates.push(i < 0 ? subDays(today, Math.abs(i)) : addDays(today, i));
     }
 
     setDates(generatedDates);
+
+    if (scrollRef.current) {
+      const todayIndex = 3;
+      const dayWidth = 80;
+      scrollRef.current.scrollLeft = (todayIndex - 1) * dayWidth;
+    }
   }, []);
 
   useEffect(() => {
     if (!user || dates.length === 0) return;
 
-    const loadEvents = async () => {
+    const loadEventCounts = async () => {
       try {
         const startDate = format(dates[0], 'yyyy-MM-dd');
         const endDate = format(dates[dates.length - 1], 'yyyy-MM-dd');
         const events = await DatabaseService.getEvents(user.id, startDate, endDate);
 
-        const eventsByDate = new Map<string, Event[]>();
+        const counts = new Map<string, number>();
         events.forEach(event => {
           const dateKey = event.date;
-          if (!eventsByDate.has(dateKey)) {
-            eventsByDate.set(dateKey, []);
-          }
-          eventsByDate.get(dateKey)!.push(event);
+          counts.set(dateKey, (counts.get(dateKey) || 0) + 1);
         });
 
-        setEventsMap(eventsByDate);
+        setEventCounts(counts);
       } catch (error) {
-        console.error('Failed to load events:', error);
+        console.error('Failed to load event counts:', error);
       }
     };
 
-    loadEvents();
+    loadEventCounts();
   }, [user, dates]);
 
   const isToday = (date: Date) => {
@@ -61,45 +62,30 @@ export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
 
   return (
     <div className="week-at-a-glance">
-      <h2 className="section-title">Week at a Glance</h2>
-      <div className="week-dates">
-        {dates.map((date, index) => {
-          const dateKey = format(date, 'yyyy-MM-dd');
-          const dayEvents = eventsMap.get(dateKey) || [];
-          const today = isToday(date);
+      <div className="week-scroll-container" ref={scrollRef}>
+        <div className="week-dates">
+          {dates.map((date, index) => {
+            const dateKey = format(date, 'yyyy-MM-dd');
+            const count = eventCounts.get(dateKey) || 0;
+            const today = isToday(date);
 
-          return (
-            <button
-              key={index}
-              className={`day-card ${today ? 'today' : ''}`}
-              onClick={() => onDateClick(date)}
-            >
-              <div className="day-header">
+            return (
+              <button
+                key={index}
+                className={`day-card ${today ? 'today' : ''}`}
+                onClick={() => onDateClick(date)}
+              >
                 <div className="day-name">{format(date, 'EEE')}</div>
                 <div className="day-number">{format(date, 'd')}</div>
-                {today && <div className="today-badge">Today</div>}
-              </div>
-
-              <div className="day-events-list">
-                {dayEvents.length === 0 ? (
-                  <div className="no-events">No events</div>
-                ) : (
-                  dayEvents.slice(0, 3).map(event => (
-                    <div key={event.id} className="event-item">
-                      <div className="event-time">
-                        {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
-                      </div>
-                      <div className="event-name">{event.name}</div>
-                    </div>
-                  ))
+                {count > 0 && (
+                  <div className="event-indicator">
+                    {count} {count === 1 ? 'event' : 'events'}
+                  </div>
                 )}
-                {dayEvents.length > 3 && (
-                  <div className="more-events">+{dayEvents.length - 3} more</div>
-                )}
-              </div>
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -19,32 +19,19 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
 
-    let dbUser = await DatabaseService.getUser(user.id);
-    if (!dbUser) {
-      await DatabaseService.createUser(user.id, user.email!, user.user_metadata?.name);
-    }
-
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-    let [tokenUsage, uploadQuota] = await Promise.all([
+    const [tokenUsage, uploadQuota] = await Promise.all([
       DatabaseService.getTokenUsage(user.id, currentMonth),
       DatabaseService.getUploadQuota(user.id, currentMonth),
     ]);
 
-    if (!tokenUsage) {
-      tokenUsage = await DatabaseService.createOrUpdateTokenUsage(user.id, currentMonth, 0, 500);
-    }
-
-    if (!uploadQuota) {
-      uploadQuota = await DatabaseService.createOrUpdateUploadQuota(user.id, currentMonth, 0, 1);
-    }
-
     if (isFileUpload) {
-      if (uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
+      if (!uploadQuota || uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
         throw new Error('Upload quota exceeded. Please upgrade your plan or wait until next month.');
       }
     }
 
-    if (tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
+    if (!tokenUsage || tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
       throw new Error('Token quota exceeded. Please upgrade your plan or wait until next month.');
     }
 
@@ -182,7 +169,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
               className="btn btn-primary"
               disabled={loading || !textInput.trim()}
             >
-              {loading ? 'Processing...' : 'Create Event(s)'}
+              {loading ? 'Processing...' : 'Extract Events'}
             </button>
           </div>
         </div>
@@ -231,7 +218,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
             className="btn btn-primary"
             disabled={loading || !selectedFile}
           >
-            {loading ? 'Processing...' : 'Create Event(s) from File'}
+            {loading ? 'Processing...' : 'Extract Events from File'}
           </button>
         </div>
       )}
