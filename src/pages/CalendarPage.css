@@ -1,0 +1,83 @@
+.calendar-page {
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  padding-bottom: 80px;
+}
+
+.calendar-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 80px 16px 24px;
+}
+
+.calendar-page-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.calendar-page-title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.calendar-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.event-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+
+.event-modal {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.3s ease;
+}
+
+.event-modal h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+}
+
+.event-details {
+  margin-bottom: 24px;
+}
+
+.event-details p {
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.event-details strong {
+  color: var(--text-primary);
+}
+
+@media (min-width: 768px) {
+  .calendar-container {
+    padding: 100px 24px 24px;
+  }
+
+  .calendar-page-title {
+    font-size: 2.5rem;
+  }
+}

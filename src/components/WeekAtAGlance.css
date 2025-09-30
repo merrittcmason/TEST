@@ -1,0 +1,86 @@
+.week-at-a-glance {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.week-scroll-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.week-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.week-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.week-scroll-container::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 3px;
+}
+
+.week-dates {
+  display: flex;
+  gap: 12px;
+  padding: 8px 4px 12px;
+  min-width: min-content;
+}
+
+.day-card {
+  flex-shrink: 0;
+  width: 80px;
+  padding: 16px 12px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.day-card:hover {
+  background-color: var(--bg-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.day-card.today {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-primary);
+  color: white;
+}
+
+.day-card.today .day-name,
+.day-card.today .day-number {
+  color: white;
+}
+
+.day-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.day-number {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.event-indicator {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.day-card.today .event-indicator {
+  color: rgba(255, 255, 255, 0.9);
+}
