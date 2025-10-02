@@ -107,45 +107,54 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
     }
   };
 
-  const handleFileSubmit = async () => {
-    if (!selectedFile) {
-      setError('Please select a file');
+const handleFileSubmit = async (fileArg?: File) => {
+  const file = fileArg ?? selectedFile;
+  if (!file) {
+    setError('Please select a file');
+    return;
+  }
+
+  setError('');
+  setLoading(true);
+
+  try {
+    await checkQuotas(true);
+    const { OpenAIFilesService } = await getServices();
+    const result = await OpenAIFilesService.parseFile(file);
+
+    if (result.events.length === 0) {
+      setError('No events found in the file.');
+      setLoading(false);
       return;
     }
-    setError('');
-    setLoading(true);
-    try {
-      await checkQuotas(true);
-      const { OpenAIFilesService } = await getServices();
-      const result = await OpenAIFilesService.parseFile(selectedFile);
-      if (result.events.length === 0) {
-        setError('No events found in the file.');
-        setLoading(false);
-        return;
-      }
-      onEventsExtracted(result.events);
-      setSelectedFile(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to process file');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const maxSize = 10 * 1024 * 1024;
-      if (file.size > maxSize) {
-        setError('File size must be less than 10MB');
-        return;
-      }
-      setSelectedFile(file);
-      setError('');
-      setShowPopup(false);
-      handleFileSubmit();
+    onEventsExtracted(result.events);
+    setSelectedFile(null);
+  } catch (err: any) {
+    setError(err.message || 'Failed to process file');
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (file) {
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('File size must be less than 10MB');
+      e.currentTarget.value = '';
+      return;
     }
-  };
+    setSelectedFile(file);
+    setError('');
+    setShowPopup(false);
+    handleFileSubmit(file);
+    e.currentTarget.value = '';
+  }
+};
+
+
 
   const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
     setCaptureMode(option);
