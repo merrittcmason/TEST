@@ -159,7 +159,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
               >
                 Week
               </button>
-              <button className="btn btn-tertiary today-
+              <button className="btn btn-tertiary today-btn" onClick={handleToday}>delete me</button>
             </div>
           </div>
         </div>
