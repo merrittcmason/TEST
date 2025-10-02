@@ -87,15 +87,9 @@ function AppContent() {
     setCurrentPage(page as Page);
   };
 
-  const handleDateClick = (date: Date) => {
+  const handleDayClick = (date: Date) => {
     setSelectedDate(date);
     setSelectedEvent(null);
-    setCurrentPage('calendar');
-  };
-
-  const handleEventClick = (date: Date, event: Event) => {
-    setSelectedDate(date);
-    setSelectedEvent(event);
     setCurrentPage('calendar');
   };
 
@@ -179,8 +173,7 @@ function AppContent() {
   return (
     <LandingPage
       onNavigate={handleNavigate}
-      onDateClick={handleDateClick}
-      onEventClick={handleEventClick}
+      onDateClick={handleDayClick}
     />
   );
 }

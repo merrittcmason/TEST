@@ -79,16 +79,61 @@
   color: var(--error);
 }
 
-.plan-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.plan-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
 }
 
-.plan-name {
-  font-size: 1.125rem;
-  font-weight: 600;
+.plan-card-header {
+  padding: 20px 24px;
+  background: var(--gradient-secondary);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.plan-badge {
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-card-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.plan-features {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plan-feature {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.feature-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.plan-btn {
+  width: 100%;
 }
 
 .danger-section {

@@ -125,15 +125,64 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
           </section>
 
           <section className="account-section">
-            <h2 className="section-title">Plan</h2>
-            <div className="account-card">
-              <div className="plan-info">
-                <div className="plan-name">{userData?.plan_type.charAt(0).toUpperCase() + userData?.plan_type.slice(1)} Plan</div>
+            <h2 className="section-title">Subscription</h2>
+            <div className="plan-card">
+              <div className="plan-card-header">
+                <div className="plan-badge">
+                  {userData?.plan_type === 'free' ? 'Standard' : 'Pro'} Plan
+                </div>
+              </div>
+              <div className="plan-card-body">
+                <div className="plan-features">
+                  {userData?.plan_type === 'free' ? (
+                    <>
+                      <div className="plan-feature">
+                        <svg className="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        500 AI tokens per month
+                      </div>
+                      <div className="plan-feature">
+                        <svg className="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        1 file upload per month
+                      </div>
+                      <div className="plan-feature">
+                        <svg className="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Basic calendar features
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="plan-feature">
+                        <svg className="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Unlimited AI tokens
+                      </div>
+                      <div className="plan-feature">
+                        <svg className="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Unlimited file uploads
+                      </div>
+                      <div className="plan-feature">
+                        <svg className="feature-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Priority support
+                      </div>
+                    </>
+                  )}
+                </div>
                 <button
                   onClick={() => onNavigate('subscription')}
-                  className="btn btn-secondary"
+                  className="btn btn-primary plan-btn"
                 >
-                  Manage Subscription
+                  {userData?.plan_type === 'free' ? 'Upgrade to Pro' : 'Manage Subscription'}
                 </button>
               </div>
             </div>

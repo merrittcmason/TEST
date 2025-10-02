@@ -38,8 +38,8 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
         const events = await DatabaseService.getEvents(user.id, dateStr, dateStr);
         const sortedEvents = events.sort((a, b) => {
-          if (a.all_day && !b.all_day) return -1;
-          if (!a.all_day && b.all_day) return 1;
+          if (a.all_day && !b.all_day) return 1;
+          if (!a.all_day && b.all_day) return -1;
           if (!a.time || !b.time) return 0;
           return a.time.localeCompare(b.time);
         });
@@ -60,13 +60,6 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
 
   const handleCloseDayDetail = () => {
     setShowDayDetail(false);
-  };
-
-  const getEventPosition = (time: string | null) => {
-    if (!time) return null;
-    const [hours, minutes] = time.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes;
-    return (totalMinutes / (24 * 60)) * 100;
   };
 
   return (
@@ -98,41 +91,45 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
               </button>
             </div>
 
-            <div className="day-detail-timeline">
-              <div className="timeline-hours">
-                {Array.from({ length: 24 }, (_, i) => (
-                  <div key={i} className="hour-marker">
-                    <span className="hour-label">
-                      {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
-                    </span>
-                    <div className="hour-line" />
-                  </div>
-                ))}
-              </div>
-
-              <div className="timeline-events">
-                {dayEvents.length === 0 ? (
-                  <div className="no-events-message">No events scheduled for this day</div>
-                ) : (
-                  dayEvents.map(event => {
-                    const position = getEventPosition(event.time);
-                    return (
+            <div className="day-detail-events-list">
+              {dayEvents.length === 0 ? (
+                <div className="no-events-message">No events scheduled for this day</div>
+              ) : (
+                dayEvents.map(event => (
+                  <div key={event.id} className="day-event-card">
+                    <div className="event-card-info">
+                      <div className="event-card-time">
+                        {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
+                      </div>
+                      <div className="event-card-details">
+                        <div className="event-card-name">{event.name}</div>
+                        {event.tag && <div className="event-card-tag">{event.tag}</div>}
+                      </div>
+                    </div>
+                    <div className="event-card-actions">
                       <button
-                        key={event.id}
-                        className="timeline-event"
-                        style={position !== null ? { top: `${position}%` } : undefined}
+                        className="btn-icon"
                         onClick={() => setSelectedEvent(event)}
+                        title="View details"
                       >
-                        <div className="event-time-badge">
-                          {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
-                        </div>
-                        <div className="event-name-display">{event.name}</div>
-                        {event.tag && <div className="event-tag-badge">{event.tag}</div>}
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
                       </button>
-                    );
-                  })
-                )}
-              </div>
+                      <button
+                        className="btn-icon"
+                        onClick={() => {}}
+                        title="Edit event"
+                      >
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
