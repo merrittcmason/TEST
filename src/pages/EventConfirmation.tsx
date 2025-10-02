@@ -28,20 +28,21 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   const [globalLabel, setGlobalLabel] = useState('');
 
   useEffect(() => {
-    if (applyLabelToAll && globalLabel) {
-      setEditableEvents(prev =>
-        prev.map(e => ({ ...e, event_label: globalLabel }))
-      );
+    if (applyLabelToAll) {
+      setEditableEvents(prev => prev.map(e => ({ ...e, event_label: globalLabel })));
     }
   }, [applyLabelToAll, globalLabel]);
 
   const handleFieldChange = (tempId: string, field: keyof EditableEvent, value: string | null) => {
+    if (field === 'event_label' && applyLabelToAll) {
+      const v = value || '';
+      setGlobalLabel(v);
+      setEditableEvents(prev => prev.map(e => ({ ...e, event_label: v })));
+      return;
+    }
     setEditableEvents(prev =>
       prev.map(e => (e.tempId === tempId ? { ...e, [field]: value } : e))
     );
-    if (field === 'event_label' && applyLabelToAll) {
-      setGlobalLabel(value || '');
-    }
   };
 
   const handleAddEvent = () => {
@@ -77,13 +78,10 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
       setError('Not authenticated');
       return;
     }
-
     setError('');
     setLoading(true);
-
     try {
       validateEvents();
-
       const eventsToCreate = editableEvents.map(e => ({
         user_id: user.id,
         name: e.event_name,
@@ -91,9 +89,8 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
         time: e.event_time,
         all_day: !e.event_time,
         tag: e.event_tag,
-        label: e.event_label,
+        label: e.event_label || null,
       }));
-
       await DatabaseService.createEvents(eventsToCreate);
       onConfirm();
     } catch (err: any) {
@@ -108,22 +105,18 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
       setError('Not authenticated');
       return;
     }
-
     setError('');
     setLoading(true);
-
     try {
       validateEvents();
-
       const draftsToCreate = editableEvents.map(e => ({
         user_id: user.id,
         event_name: e.event_name,
         event_date: e.event_date,
         event_time: e.event_time,
         event_tag: e.event_tag,
-        label: e.event_label,
+        label: e.event_label || null,
       }));
-
       await DatabaseService.createDraftEvents(draftsToCreate);
       onConfirm();
     } catch (err: any) {
@@ -197,7 +190,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                   </label>
                   <input
                     type="text"
-                    value={event.event_label || ''}
+                    value={applyLabelToAll ? globalLabel : (event.event_label || '')}
                     onChange={(e) =>
                       handleFieldChange(event.tempId, 'event_label', e.target.value || null)
                     }
@@ -208,7 +201,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                         ? 'e.g., Company Name'
                         : 'e.g., category'
                     }
-                    disabled={applyLabelToAll && event !== editableEvents[0]}
+                    disabled={applyLabelToAll}
                   />
                 </div>
               </div>
@@ -230,14 +223,28 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
               type="checkbox"
               checked={applyLabelToAll}
               onChange={(e) => {
-                setApplyLabelToAll(e.target.checked);
-                if (e.target.checked && editableEvents[0]?.event_label) {
-                  setGlobalLabel(editableEvents[0].event_label);
+                const checked = e.target.checked;
+                setApplyLabelToAll(checked);
+                if (checked) {
+                  const first = editableEvents[0];
+                  const seed = (first?.event_label || globalLabel || '').toString();
+                  setGlobalLabel(seed);
+                  setEditableEvents(prev => prev.map(ev => ({ ...ev, event_label: seed })));
                 }
               }}
             />
             <span>Apply Label to All Events</span>
           </label>
+          {applyLabelToAll && (
+            <div className="field-inline">
+              <input
+                type="text"
+                value={globalLabel}
+                onChange={(e) => setGlobalLabel(e.target.value)}
+                placeholder="Set label for all events"
+              />
+            </div>
+          )}
         </div>
 
         <button onClick={handleAddEvent} className="btn btn-secondary add-event-btn" disabled={loading}>
