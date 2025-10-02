@@ -9,7 +9,7 @@ type Mode = 'standard' | 'education' | 'work' | 'enterprise';
 
 interface EventInputProps {
   onEventsExtracted: (events: ParsedEvent[]) => void;
-  mode: Mode;
+  mode?: Mode;
 }
 
 type ServiceModule = {
@@ -24,7 +24,7 @@ const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
   enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>,
 };
 
-export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
+export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputProps) {
   const { user } = useAuth();
   const [textInput, setTextInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -34,7 +34,11 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
   const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const getServices = () => serviceLoaders[mode]();
+  const getServices = () => {
+    const loader = serviceLoaders[mode as Mode] || serviceLoaders.standard;
+    if (typeof loader !== 'function') return serviceLoaders.standard();
+    return loader();
+  };
 
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
@@ -59,7 +63,6 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
     if (tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
       throw new Error('Token quota exceeded. Please upgrade or wait until next month.');
     }
-    return { tokenUsage, uploadQuota };
   };
 
   const handleTextSubmit = async () => {
@@ -74,7 +77,7 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
       const { OpenAITextService } = await getServices();
       const result = await OpenAITextService.parseNaturalLanguage(textInput);
       if (result.events.length === 0) {
-        setError('No events found. Please rephrase your input.');
+        setError('No events found. Please try rephrasing your input.');
         setLoading(false);
         return;
       }
