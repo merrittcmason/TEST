@@ -181,7 +181,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
       if (onResumeDrafts) {
         onResumeDrafts(mapped);
       } else {
-        setError('No resume handler provided.');
+        onEventsExtracted(mapped);
       }
     } catch (e: any) {
       setError(e?.message || 'Failed to load drafts');
@@ -193,36 +193,14 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
   if (hasDrafts) {
     return (
       <div className="event-input">
-        <div className="pill-input-container">
-          <button
-            className="pill-plus-btn"
-            onClick={handleResumeDrafts}
-            disabled={loading}
-            title="Finish Creating Events"
-          >
-            ✓
-          </button>
-          <input
-            type="text"
-            value="Finish Creating Events"
-            readOnly
-            className="pill-input"
-          />
-          <button
-            className="pill-submit-btn"
-            onClick={handleResumeDrafts}
-            disabled={loading}
-            title="Finish Creating Events"
-          >
-            {loading ? (
-              <div className="loading-spinner-small" />
-            ) : (
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            )}
-          </button>
-        </div>
+        <button
+          className="pill-full-btn"
+          onClick={handleResumeDrafts}
+          disabled={loading}
+          title="Finish Creating Events"
+        >
+          {loading ? 'Loading…' : 'Finish Creating Events'}
+        </button>
         {error && <div className="input-error">{error}</div>}
       </div>
     );
