@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 import { CalendarView } from '../components/CalendarView';
 import { EventInput } from '../components/EventInput';
 import { HamburgerMenu } from '../components/HamburgerMenu';
@@ -27,11 +27,8 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
   const [showDayDetail, setShowDayDetail] = useState(!!initialEvent);
   const [dayEvents, setDayEvents] = useState<Event[]>([]);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', date: '', time: '', tag: '', label: '', all_day: false });
+  const [editForm, setEditForm] = useState({ name: '', date: '', time: '', tag: '', all_day: false });
   const [saving, setSaving] = useState(false);
-
-  const [labelFilter, setLabelFilter] = useState<string>('all');
-  const [labels, setLabels] = useState<string[]>([]);
 
   const handleEventClick = (event: Event) => {
     setSelectedEvent(event);
@@ -60,39 +57,6 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
     loadDayEvents();
   }, [user, selectedDate, showDayDetail]);
 
-  useEffect(() => {
-    if (!user) return;
-    const loadLabels = async () => {
-      try {
-        if ((DatabaseService as any).getLabels) {
-          const list = await (DatabaseService as any).getLabels(user.id);
-          const unique = Array.from(new Set((list || []).map((s: string) => s).filter(Boolean)));
-          setLabels(unique);
-          return;
-        }
-      } catch {
-      }
-      try {
-        const start = startOfMonth(selectedDate);
-        const end = endOfMonth(selectedDate);
-        const events = await DatabaseService.getEvents(user.id, format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'));
-        const unique = Array.from(new Set((events || []).map((e: any) => (e.label ?? e.tag ?? '').toString().trim()).filter(Boolean)));
-        setLabels(unique);
-      } catch (err) {
-        console.error('Failed to derive labels from events', err);
-      }
-    };
-    loadLabels();
-  }, [user, selectedDate]);
-
-  const filteredDayEvents = useMemo(() => {
-    if (labelFilter === 'all') return dayEvents;
-    return dayEvents.filter((e: any) => {
-      const lbl = (e.label ?? '').toString().trim().toLowerCase();
-      return lbl === labelFilter.toLowerCase();
-    });
-  }, [dayEvents, labelFilter]);
-
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
     setShowDayDetail(true);
@@ -103,14 +67,13 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
     setShowDayDetail(false);
   };
 
-  const handleEditEvent = (event: any) => {
+  const handleEditEvent = (event: Event) => {
     setEditingEvent(event);
     setEditForm({
       name: event.name,
       date: event.date,
       time: event.time || '',
       tag: event.tag || '',
-      label: event.label || '',
       all_day: event.all_day || false,
     });
   };
@@ -125,9 +88,8 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
         date: editForm.date,
         time: editForm.time || null,
         tag: editForm.tag || null,
-        label: editForm.label || null,
         all_day: editForm.all_day,
-      } as any);
+      });
 
       setEditingEvent(null);
 
@@ -189,23 +151,10 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
 
       <div className="calendar-container">
         <main className="calendar-content">
-          <div className="calendar-toolbar">
-            <label className="label-filter">
-              <span>Filter by Label</span>
-              <select value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)}>
-                <option value="all">All</option>
-                {labels.map(l => (
-                  <option key={l.toLowerCase()} value={l.toLowerCase()}>{l}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
           <CalendarView
             selectedDate={selectedDate}
             onDateSelect={handleDateSelect}
             onEventClick={handleEventClick}
-            labelFilter={labelFilter}
           />
 
           <EventInput onEventsExtracted={onEventsExtracted} />
@@ -226,10 +175,10 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
             </div>
 
             <div className="day-detail-events-list">
-              {filteredDayEvents.length === 0 ? (
+              {dayEvents.length === 0 ? (
                 <div className="no-events-message">No events scheduled for this day</div>
               ) : (
-                filteredDayEvents.map((event: any) => (
+                dayEvents.map(event => (
                   <div key={event.id} className="day-event-card">
                     <div className="event-card-info">
                       <div className="event-card-time">
@@ -237,7 +186,6 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
                       </div>
                       <div className="event-card-details">
                         <div className="event-card-name">{event.name}</div>
-                        {event.label && <div className="event-card-label">Label: {event.label}</div>}
                         {event.tag && <div className="event-card-tag">{event.tag}</div>}
                       </div>
                     </div>
@@ -275,12 +223,26 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
           <div className="event-modal" onClick={(e) => e.stopPropagation()}>
             <h3>{selectedEvent.name}</h3>
             <div className="event-details">
-              <p><strong>Date:</strong> {selectedEvent.date}</p>
-              {selectedEvent.time && <p><strong>Time:</strong> {selectedEvent.time}</p>}
-              {selectedEvent.label && <p><strong>Label:</strong> {selectedEvent.label}</p>}
-              {selectedEvent.tag && <p><strong>Tag:</strong> {selectedEvent.tag}</p>}
+              <p>
+                <strong>Date:</strong> {selectedEvent.date}
+              </p>
+              {selectedEvent.time && (
+                <p>
+                  <strong>Time:</strong> {selectedEvent.time}
+                </p>
+              )}
+              {selectedEvent.tag && (
+                <p>
+                  <strong>Tag:</strong> {selectedEvent.tag}
+                </p>
+              )}
             </div>
-            <button onClick={() => setSelectedEvent(null)} className="btn btn-primary">Close</button>
+            <button
+              onClick={() => setSelectedEvent(null)}
+              className="btn btn-primary"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -329,17 +291,6 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
               </div>
 
               <div className="form-group">
-                <label htmlFor="edit-label">Label</label>
-                <input
-                  id="edit-label"
-                  type="text"
-                  value={editForm.label}
-                  onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
-                  placeholder="e.g., CAT-100"
-                />
-              </div>
-
-              <div className="form-group">
                 <label htmlFor="edit-tag">Tag</label>
                 <input
                   id="edit-tag"
@@ -362,14 +313,26 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
               </div>
 
               <div className="edit-actions">
-                <button onClick={handleDeleteEvent} className="btn btn-danger" disabled={saving}>
+                <button
+                  onClick={handleDeleteEvent}
+                  className="btn btn-danger"
+                  disabled={saving}
+                >
                   {saving ? 'Deleting...' : 'Delete'}
                 </button>
                 <div className="edit-actions-right">
-                  <button onClick={() => setEditingEvent(null)} className="btn btn-secondary" disabled={saving}>
+                  <button
+                    onClick={() => setEditingEvent(null)}
+                    className="btn btn-secondary"
+                    disabled={saving}
+                  >
                     Cancel
                   </button>
-                  <button onClick={handleSaveEdit} className="btn btn-primary" disabled={saving || !editForm.name || !editForm.date}>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="btn btn-primary"
+                    disabled={saving || !editForm.name || !editForm.date}
+                  >
                     {saving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
