@@ -14,6 +14,21 @@ import type { ParsedEvent } from './services/openai';
 import { DatabaseService } from './services/database';
 import './styles/theme.css';
 
+// 👇 add supabase client for debug
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL!,
+  import.meta.env.VITE_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }
+);
+
 type Page = 'landing' | 'calendar' | 'settings' | 'account' | 'subscription' | 'export' | 'eventConfirmation';
 
 function AppContent() {
@@ -89,6 +104,11 @@ function AppContent() {
     setCurrentPage('calendar');
   };
 
+  // 👇 special case: check if URL contains /debug-auth
+  if (window.location.pathname === '/debug-auth') {
+    return <DebugAuth />;
+  }
+
   if (showLaunch) {
     return <LaunchScreen onComplete={handleLaunchComplete} />;
   }
@@ -150,6 +170,35 @@ function AppContent() {
       onNavigate={handleNavigate}
       onDateClick={handleDateClick}
     />
+  );
+}
+
+// 👇 DebugAuth component definition
+function DebugAuth() {
+  const [session, setSession] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  return (
+    <pre style={{ whiteSpace: 'pre-wrap', padding: 20 }}>
+      SESSION: {JSON.stringify(session, null, 2)}
+      {"\n\n"}
+      USER: {JSON.stringify(user, null, 2)}
+    </pre>
   );
 }
 
