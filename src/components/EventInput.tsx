@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ParsedEvent } from '../services/openaiText';
 import { OpenAITextService } from '../services/openaiText';
 import { OpenAIFilesService } from '../services/openaiFiles';
 import { DatabaseService } from '../services/database';
@@ -66,7 +67,8 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     try {
       await checkQuotas(false);
 
-      const result = await OpenAIService.parseNaturalLanguage(textInput);
+      // ✅ Textbox: use the TEXT service (original flow, improved naming prompt there)
+      const result = await OpenAITextService.parseNaturalLanguage(textInput);
 
       if (result.events.length === 0) {
         setError('No events found. Please try rephrasing your input.');
@@ -96,7 +98,8 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     try {
       await checkQuotas(true);
 
-      const result = await OpenAIService.parseFileContent(selectedFile);
+      // ✅ Files: use the FILES service (deterministic parsing + JSON mode)
+      const result = await OpenAIFilesService.parseFile(selectedFile);
 
       if (result.events.length === 0) {
         setError('No events found in the file.');
@@ -133,12 +136,14 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         <button
           className={`mode-btn ${mode === 'text' ? 'active' : ''}`}
           onClick={() => setMode('text')}
+          disabled={loading}
         >
           Text Input
         </button>
         <button
           className={`mode-btn ${mode === 'file' ? 'active' : ''}`}
           onClick={() => setMode('file')}
+          disabled={loading}
         >
           File Upload
         </button>
@@ -149,7 +154,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
           <textarea
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Example: I have a meeting on October 3rd at 8:30 am"
+            placeholder="Example: I have an interview with Integro October 5th at 12 pm"
             className="event-textarea"
             rows={4}
             disabled={loading}
@@ -171,7 +176,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
             <input
               type="file"
               id="file-input"
-              accept="image/*,.pdf,.txt,.doc,.docx"
+              accept="image/*,.pdf,.txt,.doc,.docx,.xlsx,.xls,.csv"
               onChange={handleFileChange}
               className="file-input-hidden"
               disabled={loading}
@@ -200,7 +205,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
                     />
                   </svg>
                   <p>Click to upload or drag and drop</p>
-                  <p className="file-hint">Images, PDFs, or text documents</p>
+                  <p className="file-hint">Images, PDFs, Word, Excel, or text files</p>
                 </div>
               )}
             </label>
