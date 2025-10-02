@@ -3,9 +3,13 @@ import type { Database } from '../lib/supabase';
 
 type User = Database['public']['Tables']['users']['Row'];
 type Event = Database['public']['Tables']['events']['Row'];
+type EventInsert = Database['public']['Tables']['events']['Insert'];
+type EventUpdate = Database['public']['Tables']['events']['Update'];
 type TokenUsage = Database['public']['Tables']['token_usage']['Row'];
 type UploadQuota = Database['public']['Tables']['upload_quotas']['Row'];
 type Subscription = Database['public']['Tables']['subscriptions']['Row'];
+type DraftEventRow = Database['public']['Tables']['draft_events']['Row'];
+type DraftEventInsert = Database['public']['Tables']['draft_events']['Insert'];
 
 async function getCurrentUserId(): Promise<string> {
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -15,28 +19,17 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 export class DatabaseService {
-  /** -------------------- USERS -------------------- */
-
   static async getUser(userId: string): Promise<User | null> {
     const { data, error } = await supabase
       .from('users')
-      .select('*') // includes plan_type per your schema
+      .select('*')
       .eq('id', userId)
       .maybeSingle();
-
     if (error) throw error;
     return data;
   }
 
-  /**
-   * Don’t call this from the client anymore.
-   * Profiles are created by a DB trigger on auth.users insert (plan_type='free').
-   */
-  static async createUser(
-    _userId: string,
-    _email: string,
-    _name?: string
-  ): Promise<User> {
+  static async createUser(_userId: string, _email: string, _name?: string): Promise<User> {
     throw new Error('createUser is disabled: profiles are created by DB trigger on signup');
   }
 
@@ -46,21 +39,19 @@ export class DatabaseService {
   ): Promise<User> {
     const { data, error } = await supabase
       .from('users')
-      .update(updates) // plan_type changes should go through a controlled RPC/server
+      .update(updates)
       .eq('id', userId)
       .select()
       .single();
-
     if (error) throw error;
     return data;
   }
 
-  /** -------------------- EVENTS -------------------- */
-
   static async getEvents(
     userId: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    label?: string
   ): Promise<Event[]> {
     let query = supabase
       .from('events')
@@ -68,73 +59,64 @@ export class DatabaseService {
       .eq('user_id', userId)
       .order('date', { ascending: true })
       .order('time', { ascending: true, nullsFirst: false });
-
     if (startDate) query = query.gte('date', startDate);
-    if (endDate)   query = query.lte('date', endDate);
-
+    if (endDate) query = query.lte('date', endDate);
+    if (label) query = query.eq('label', label);
     const { data, error } = await query;
     if (error) throw error;
     return data || [];
   }
 
-  /**
-   * Ensures user_id is set to the current auth user to satisfy RLS:
-   *   WITH CHECK (user_id = auth.uid())
-   */
-  static async createEvent(
-    event: Database['public']['Tables']['events']['Insert']
-  ): Promise<Event> {
-    let payload = { ...event } as Database['public']['Tables']['events']['Insert'];
+  static async getAvailableLabels(userId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('events')
+      .select('label')
+      .eq('user_id', userId)
+      .not('label', 'is', null);
+    if (error) throw error;
+    const set = new Set<string>();
+    for (const r of data || []) {
+      const v = (r as any).label as string | null;
+      if (v && v.trim()) set.add(v.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
 
+  static async createEvent(event: EventInsert): Promise<Event> {
+    let payload = { ...event } as EventInsert;
     if (!payload.user_id) {
       const uid = await getCurrentUserId();
       payload.user_id = uid;
     }
-
     const { data, error } = await supabase
       .from('events')
       .insert(payload)
       .select()
       .single();
-
     if (error) throw error;
-    return data;
+    return data as Event;
   }
 
-  /**
-   * Bulk create; injects user_id for any items missing it.
-   */
-  static async createEvents(
-    events: Database['public']['Tables']['events']['Insert'][]
-  ): Promise<Event[]> {
+  static async createEvents(events: EventInsert[]): Promise<Event[]> {
     const uid = await getCurrentUserId();
-    const payload = events.map(e => ({
-      ...e,
-      user_id: e.user_id ?? uid,
-    })) as Database['public']['Tables']['events']['Insert'][];
-
+    const payload = events.map(e => ({ ...e, user_id: e.user_id ?? uid })) as EventInsert[];
     const { data, error } = await supabase
       .from('events')
       .insert(payload)
       .select();
-
     if (error) throw error;
-    return data as Event[];
+    return (data || []) as Event[];
   }
 
-  static async updateEvent(
-    eventId: string,
-    updates: Database['public']['Tables']['events']['Update']
-  ): Promise<Event> {
+  static async updateEvent(eventId: string, updates: EventUpdate): Promise<Event> {
     const { data, error } = await supabase
       .from('events')
       .update(updates)
       .eq('id', eventId)
       .select()
       .single();
-
     if (error) throw error;
-    return data;
+    return data as Event;
   }
 
   static async deleteEvent(eventId: string): Promise<void> {
@@ -142,11 +124,8 @@ export class DatabaseService {
       .from('events')
       .delete()
       .eq('id', eventId);
-
     if (error) throw error;
   }
-
-  /** -------------------- TOKEN USAGE (READ-ONLY on client) -------------------- */
 
   static async getTokenUsage(userId: string, month: string): Promise<TokenUsage | null> {
     const { data, error } = await supabase
@@ -155,15 +134,10 @@ export class DatabaseService {
       .eq('user_id', userId)
       .eq('month', month)
       .maybeSingle();
-
     if (error) throw error;
     return data;
   }
 
-  /**
-   * Client writes are disabled by design (RLS is SELECT-only).
-   * Updates must be done by a backend using the service role or a secure RPC.
-   */
   static async createOrUpdateTokenUsage(
     _userId: string,
     _month: string,
@@ -173,8 +147,6 @@ export class DatabaseService {
     throw new Error('client writes disabled: token_usage is system-managed');
   }
 
-  /** -------------------- UPLOAD QUOTAS (READ-ONLY on client) -------------------- */
-
   static async getUploadQuota(userId: string, month: string): Promise<UploadQuota | null> {
     const { data, error } = await supabase
       .from('upload_quotas')
@@ -182,15 +154,10 @@ export class DatabaseService {
       .eq('user_id', userId)
       .eq('month', month)
       .maybeSingle();
-
     if (error) throw error;
     return data;
   }
 
-  /**
-   * Client writes are disabled by design (RLS is SELECT-only).
-   * Updates must be done by a backend using the service role or a secure RPC.
-   */
   static async createOrUpdateUploadQuota(
     _userId: string,
     _month: string,
@@ -200,10 +167,6 @@ export class DatabaseService {
     throw new Error('client writes disabled: upload_quotas is system-managed');
   }
 
-  /** -------------------- SUBSCRIPTIONS --------------------
-   * Recommended: perform create/update from your backend with the service role.
-   */
-
   static async getActiveSubscription(userId: string): Promise<Subscription | null> {
     const { data, error } = await supabase
       .from('subscriptions')
@@ -211,7 +174,6 @@ export class DatabaseService {
       .eq('user_id', userId)
       .eq('status', 'active')
       .maybeSingle();
-
     if (error) throw error;
     return data;
   }
@@ -224,7 +186,6 @@ export class DatabaseService {
       .insert(subscription)
       .select()
       .single();
-
     if (error) throw error;
     return data as Subscription;
   }
@@ -239,64 +200,57 @@ export class DatabaseService {
       .eq('id', subscriptionId)
       .select()
       .single();
-
     if (error) throw error;
     return data as Subscription;
   }
 
-  /** -------------------- MODE MANAGEMENT -------------------- */
-
-  static async updateUserMode(
-    userId: string,
-    mode: string
-  ): Promise<User> {
+  static async updateUserMode(userId: string, mode: string): Promise<User> {
     const { data, error } = await supabase
       .from('users')
       .update({ mode })
       .eq('id', userId)
       .select()
       .single();
-
     if (error) throw error;
-    return data;
+    return data as User;
   }
 
-  /** -------------------- DRAFT EVENTS -------------------- */
-
-  static async createDraftEvents(
-    drafts: any[]
-  ): Promise<any[]> {
+  static async replaceDraftEvents(userId: string, drafts: DraftEventInsert[]): Promise<DraftEventRow[]> {
+    const { error: delErr } = await supabase.from('draft_events').delete().eq('user_id', userId);
+    if (delErr) throw delErr;
+    if (!drafts.length) return [];
     const uid = await getCurrentUserId();
-    const payload = drafts.map(e => ({
-      ...e,
-      user_id: e.user_id ?? uid,
-    }));
-
-    const { data, error } = await supabase
-      .from('draft_events')
-      .insert(payload)
-      .select();
-
-    if (error) throw error;
-    return data as any[];
+    const payload = drafts.map(d => ({ ...d, user_id: d.user_id ?? uid })) as DraftEventInsert[];
+    const { data, error: insErr } = await supabase.from('draft_events').insert(payload).select();
+    if (insErr) throw insErr;
+    return (data || []) as DraftEventRow[];
   }
 
-  static async getDraftEvents(userId: string): Promise<any[]> {
+  static async getDraftEvents(userId: string): Promise<DraftEventRow[]> {
     const { data, error } = await supabase
       .from('draft_events')
       .select('*')
-      .eq('user_id', userId);
-
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
     if (error) throw error;
-    return data || [];
+    return (data || []) as DraftEventRow[];
+  }
+
+  static async clearDraftEvents(userId: string): Promise<void> {
+    const { error } = await supabase.from('draft_events').delete().eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  static async createDraftEvents(drafts: DraftEventInsert[]): Promise<DraftEventRow[]> {
+    const uid = await getCurrentUserId();
+    const payload = drafts.map(e => ({ ...e, user_id: e.user_id ?? uid })) as DraftEventInsert[];
+    const { data, error } = await supabase.from('draft_events').insert(payload).select();
+    if (error) throw error;
+    return (data || []) as DraftEventRow[];
   }
 
   static async deleteDraftEvents(userId: string): Promise<void> {
-    const { error } = await supabase
-      .from('draft_events')
-      .delete()
-      .eq('user_id', userId);
-
+    const { error } = await supabase.from('draft_events').delete().eq('user_id', userId);
     if (error) throw error;
   }
 }
