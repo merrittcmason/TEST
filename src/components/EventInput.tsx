@@ -34,7 +34,6 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPopup, setShowPopup] = useState(false);
-  const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const getServices = () => serviceLoaders[mode]();
@@ -151,10 +150,11 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
   };
 
   const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
-    setCaptureMode(option);
     setShowPopup(false);
-    if (option === 'document' || option === 'picture') {
-      document.getElementById('file-input-hidden')?.click();
+    if (option === 'document') {
+      document.getElementById('doc-input-hidden')?.click();
+    } else if (option === 'picture') {
+      document.getElementById('image-input-hidden')?.click();
     } else if (option === 'camera') {
       document.getElementById('camera-input-hidden')?.click();
     }
@@ -162,24 +162,10 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
 
   return (
     <div className="event-input">
-      <div className="pill-input-container">
-        <input
-          type="text"
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && textInput.trim()) {
-              e.preventDefault();
-              handleTextSubmit();
-            }
-          }}
-          placeholder="Start Typing"
-          className="pill-input"
-          disabled={loading}
-        />
-
+      {/* Row: + button (left), pill input (center), submit (right) */}
+      <div className="pill-input-row">
         <button
-          className="pill-plus-btn"
+          className="pill-plus-btn left-of-pill"
           onClick={() => setShowPopup(!showPopup)}
           disabled={loading}
           title="Add from file or camera"
@@ -188,6 +174,23 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
         </button>
+
+        <div className="pill-input-container">
+          <input
+            type="text"
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && textInput.trim()) {
+                e.preventDefault();
+                handleTextSubmit();
+              }
+            }}
+            placeholder="Start Typing"
+            className="pill-input"
+            disabled={loading}
+          />
+        </div>
 
         <button
           className="pill-submit-btn"
@@ -203,45 +206,46 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
             </svg>
           )}
         </button>
-
-        {showPopup && (
-          <div className="input-popup">
-            <button
-              className="popup-option"
-              onClick={() => handlePopupOption('document')}
-            >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Upload Document
-            </button>
-            <button
-              className="popup-option"
-              onClick={() => handlePopupOption('picture')}
-            >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Upload Picture
-            </button>
-            <button
-              className="popup-option"
-              onClick={() => handlePopupOption('camera')}
-            >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Open Camera
-            </button>
-          </div>
-        )}
       </div>
+
+      {showPopup && (
+        <div className="input-popup">
+          <button className="popup-option" onClick={() => handlePopupOption('picture')}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Upload Photo
+          </button>
+          <button className="popup-option" onClick={() => handlePopupOption('document')}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Upload Document
+          </button>
+          <button className="popup-option" onClick={() => handlePopupOption('camera')}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Open Camera
+          </button>
+        </div>
+      )}
+
+      {/* Hidden inputs — each with fixed, correct accept */}
+      <input
+        type="file"
+        id="doc-input-hidden"
+        accept=".pdf,.txt,.doc,.docx,.xlsx,.xls,.csv"
+        onChange={handleFileChange}
+        className="file-input-hidden"
+        style={{ display: 'none' }}
+      />
 
       <input
         type="file"
-        id="file-input-hidden"
-        accept={captureMode === 'document' ? '.pdf,.txt,.doc,.docx,.xlsx,.xls,.csv' : 'image/*'}
+        id="image-input-hidden"
+        accept="image/*"
         onChange={handleFileChange}
         className="file-input-hidden"
         style={{ display: 'none' }}
