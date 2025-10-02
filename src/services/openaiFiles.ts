@@ -16,26 +16,43 @@ export interface ParseResult {
   tokensUsed: number;
 }
 
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-const MAX_CONTENT_TOKENS = 2000;
-const MAX_PDF_PAGES = 20;         // guardrail for very large PDFs
-const OCR_DPI_SCALE = 1.5;        // PDF render scale for decent OCR quality
+/** -------------------- Debug plumbing -------------------- */
+type AIDebugInfo = {
+  model: string;
+  systemPromptFirst400: string;
+  userContentFirst1200: string;
+  userContentLength: number;
+  rawResponseFirst2000?: string;
+  rawResponseLength?: number;
+  parseError?: {
+    message: string;
+    pos?: number;
+    line?: number;
+    col?: number;
+    excerpt?: string;
+  };
+};
 
-/* -------------------- utils -------------------- */
-function estimateTokens(text: string): number {
-  return Math.ceil((text || "").length / 4);
+let lastAIDebug: AIDebugInfo | null = null;
+const DEBUG_AI = (import.meta as any).env?.VITE_DEBUG_AI === "1";
+
+export function getLastAIDebug(): AIDebugInfo | null {
+  return lastAIDebug;
 }
 
-function safeJsonParse(content: string): any {
-  let s = (content || "").replace(/```(json)?/g, "").trim();
-  const fix = (x: string) => x.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
-  try {
-    return JSON.parse(fix(s));
-  } catch {
-    const m = s.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error("No valid JSON found in AI response");
-    return JSON.parse(fix(m[0]));
-  }
+// Optional: expose in DevTools for quick inspection
+// @ts-ignore
+if (typeof window !== "undefined") (window as any).__AI_DEBUG__ = () => lastAIDebug;
+
+/** -------------------- Config -------------------- */
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+const MAX_CONTENT_TOKENS = 2000;
+const MAX_PDF_PAGES = 20;
+const OCR_DPI_SCALE = 1.5;
+
+/** -------------------- Small utils -------------------- */
+function estimateTokens(text: string): number {
+  return Math.ceil((text || "").length / 4);
 }
 
 function toTitleCase(s: string): string {
@@ -52,13 +69,10 @@ function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
     let name = (e.event_name || "").trim();
     name = toTitleCase(name).replace(/\s{2,}/g, " ");
     if (name.length > 60) name = name.slice(0, 57).trimEnd() + "...";
-
-    // Normalize time field: "" -> null
     const event_time =
       typeof e.event_time === "string" && e.event_time.trim() === ""
         ? null
         : e.event_time;
-
     return {
       event_name: name,
       event_date: e.event_date,
@@ -81,8 +95,26 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out;
 }
 
-/* -------------------- prompts -------------------- */
-const EXTRACT_ALL_PROMPT = `You are an expert schedule harvester. Input is OCR text from a syllabus or business/class schedule (tables may be flattened as lines, sometimes using " | " between cells).
+/** Pretty error context for JSON parse */
+function positionToLineCol(s: string, pos: number) {
+  let line = 1, col = 1;
+  for (let i = 0; i < pos && i < s.length; i++) {
+    if (s[i] === "\n") { line++; col = 1; }
+    else col++;
+  }
+  return { line, col };
+}
+
+function excerptAround(s: string, pos: number, radius = 120) {
+  const start = Math.max(0, pos - radius);
+  const end = Math.min(s.length, pos + radius);
+  const snippet = s.slice(start, end);
+  const caret = " ".repeat(Math.max(0, pos - start)) + "^";
+  return `${snippet}\n${caret}`;
+}
+
+/** -------------------- Prompt (OCR → recall-first) -------------------- */
+const EXTRACT_ALL_PROMPT = `You are an expert schedule harvester. Input is OCR or flattened text from business/class schedules (tables may be flattened with " | " between cells).
 
 Your job: MAXIMUM RECALL. Extract EVERY dated item: homework, assignments, quizzes, exams, labs, classes, meetings, interviews, office hours, holidays, breaks, "no class"/school closed—everything. If a single date has multiple items, create multiple events.
 
@@ -101,26 +133,25 @@ Output rules:
 - Title-Case, professional, ≤ 50 chars; no dates/times/pronouns in names. Examples: "Integro Interview", "Homework 3", "Physics Midterm", "No Class (Holiday)".
 - Use current year if missing (${new Date().getFullYear()}).
 - Accept dates like "YYYY-MM-DD", "MM/DD", "M/D", "Oct 5", "October 5".
-- Times: parse "12 pm", "12:00pm", "12–1 pm", "noon", "midnight", "11:59 pm". Convert to 24-hour "HH:MM".
+- Times: "12 pm", "12:00pm", "12–1 pm", "noon", "midnight", "11:59 pm". Convert to 24-hour "HH:MM".
   - "noon" → "12:00"
   - "midnight" → "00:00"
   - ranges use START time (e.g., "12–1 pm" → "12:00")
   - if text says due/submit/turn-in but NO time → "23:59"
 - If no time at all → event_time = null (all-day).
-- If a line contains multiple items (e.g., "HW 3 due; Quiz 2") → create multiple events with the SAME date.
+- If a line contains multiple items (e.g., "HW 3 due; Quiz 2") → create MULTIPLE events with the SAME date.
 - Prefer a specific tag if obvious; else null.
 - Be comprehensive—DO NOT skip minor items.
 Return ONLY valid JSON—no commentary, no markdown, no trailing commas.`;
 
-/* -------------------- OCR paths -------------------- */
+/** -------------------- OCR paths -------------------- */
 async function ocrFromImageFile(file: File): Promise<string> {
   const res = await Tesseract.recognize(file, "eng");
   return (res?.data?.text || "").trim();
 }
 
 async function ocrFromPdf(file: File): Promise<string> {
-  // Set worker (browser) if missing
-  // @ts-ignore
+  // @ts-ignore ensure worker for browser
   if (pdfjsLib?.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
     try {
       // @ts-ignore
@@ -128,14 +159,12 @@ async function ocrFromPdf(file: File): Promise<string> {
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     } catch {}
   }
-
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
 
   let text = "";
   const pageCount = Math.min(pdf.numPages, MAX_PDF_PAGES);
 
-  // Reusable canvas for rendering
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
 
@@ -148,7 +177,6 @@ async function ocrFromPdf(file: File): Promise<string> {
 
     await page.render({ canvasContext: ctx as any, viewport }).promise;
 
-    // Tesseract supports HTMLCanvasElement directly
     const result = await Tesseract.recognize(canvas, "eng");
     if (result?.data?.text) {
       text += result.data.text + "\n";
@@ -158,9 +186,8 @@ async function ocrFromPdf(file: File): Promise<string> {
   return text.trim();
 }
 
-/* -------------------- non-OCR extractors (browser-friendly) -------------------- */
+/** -------------------- non-OCR extractors -------------------- */
 async function extractTextFromDocx(file: File): Promise<string> {
-  // Convert to HTML, then flatten tables into "cell | cell | cell" lines + body text
   const arrayBuffer = await file.arrayBuffer();
   const { value: html } = await (mammoth as any).convertToHtml({ arrayBuffer });
   const parser = new DOMParser();
@@ -168,7 +195,6 @@ async function extractTextFromDocx(file: File): Promise<string> {
 
   const parts: string[] = [];
 
-  // Tables → rows
   doc.querySelectorAll("table").forEach((table) => {
     table.querySelectorAll("tr").forEach((tr) => {
       const cells = Array.from(tr.querySelectorAll("th,td"))
@@ -179,7 +205,6 @@ async function extractTextFromDocx(file: File): Promise<string> {
     });
   });
 
-  // Lists and paragraphs
   doc.querySelectorAll("li, p").forEach((el) => {
     const t = el.textContent?.replace(/\s+/g, " ").trim();
     if (t) parts.push(t);
@@ -205,7 +230,7 @@ async function extractTextFromXlsx(file: File): Promise<string> {
   return parts.join("\n").trim();
 }
 
-/* -------------------- normalizer -------------------- */
+/** -------------------- normalizer -------------------- */
 function toStructuredPlainText(raw: string): string {
   const cleaned = (raw || "")
     .replace(/\r/g, "\n")
@@ -223,10 +248,20 @@ function toStructuredPlainText(raw: string): string {
   return lines.join("\n");
 }
 
-/* -------------------- OpenAI (JSON mode) -------------------- */
+/** -------------------- OpenAI (JSON mode + debug) -------------------- */
 async function callOpenAI_JSONMode(
-  userContent: string
+  model: string,
+  systemPrompt: string,
+  userContent: string,
+  maxTokens: number
 ): Promise<{ parsed: any; tokensUsed: number }> {
+  lastAIDebug = {
+    model,
+    systemPromptFirst400: systemPrompt.slice(0, 400),
+    userContentFirst1200: userContent.slice(0, 1200),
+    userContentLength: userContent.length,
+  };
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -234,9 +269,9 @@ async function callOpenAI_JSONMode(
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model,
       messages: [
-        { role: "system", content: EXTRACT_ALL_PROMPT },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content:
@@ -245,9 +280,9 @@ async function callOpenAI_JSONMode(
             `---BEGIN---\n${userContent}\n---END---`,
         },
       ],
-      temperature: 0.0, // deterministic
-      max_tokens: 1200,
-      response_format: { type: "json_object" }, // strict JSON
+      temperature: 0.0,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" },
     }),
   });
 
@@ -260,11 +295,51 @@ async function callOpenAI_JSONMode(
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
 
-  const parsed = safeJsonParse(content);
-  return { parsed, tokensUsed };
+  lastAIDebug.rawResponseFirst2000 = content.slice(0, 2000);
+  lastAIDebug.rawResponseLength = content.length;
+
+  try {
+    const parsed = JSON.parse(content);
+    return { parsed, tokensUsed };
+  } catch (e: any) {
+    // Try to produce precise context for the developer
+    const msg = String(e?.message || "JSON parse error");
+    const m = msg.match(/position (\d+)/i);
+    const pos = m ? parseInt(m[1], 10) : undefined;
+
+    let line: number | undefined;
+    let col: number | undefined;
+    let excerpt: string | undefined;
+
+    if (typeof pos === "number") {
+      const lc = positionToLineCol(content, pos);
+      line = lc.line;
+      col = lc.col;
+      excerpt = excerptAround(content, pos);
+    }
+
+    lastAIDebug.parseError = { message: msg, pos, line, col, excerpt };
+
+    if (DEBUG_AI) {
+      // eslint-disable-next-line no-console
+      console.error("[AI JSON ERROR]", {
+        message: msg,
+        pos,
+        line,
+        col,
+        excerpt,
+        rawPreview: lastAIDebug.rawResponseFirst2000,
+      });
+    }
+
+    // Throw a dev-friendly error with context
+    const where = (line && col) ? ` at line ${line}, col ${col}` : "";
+    const ex = excerpt ? `\n\nExcerpt around error:\n${excerpt}` : "";
+    throw new Error(`AI returned malformed JSON${where}: ${msg}${ex}`);
+  }
 }
 
-/* -------------------- Public API -------------------- */
+/** -------------------- Public API -------------------- */
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
@@ -272,16 +347,13 @@ export class OpenAIFilesService {
     const name = (file.name || "").toLowerCase();
     const type = (file.type || "").toLowerCase();
 
+    // OCR-first for images and PDFs
     let raw = "";
-
     if (type.startsWith("image/")) {
-      // Pure OCR for images
       raw = await ocrFromImageFile(file);
     } else if (type.includes("pdf") || name.endsWith(".pdf")) {
-      // Render PDF → OCR page images
       raw = await ocrFromPdf(file);
     } else if (type.includes("word") || name.endsWith(".docx")) {
-      // Browser can’t “image” Word; parse text deterministically
       raw = await extractTextFromDocx(file);
     } else if (
       type.includes("excel") ||
@@ -289,7 +361,6 @@ export class OpenAIFilesService {
       name.endsWith(".xls") ||
       name.endsWith(".csv")
     ) {
-      // Same for spreadsheets
       raw = await extractTextFromXlsx(file);
     } else if (type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text();
@@ -309,9 +380,16 @@ export class OpenAIFilesService {
       );
     }
 
-    const { parsed, tokensUsed } = await callOpenAI_JSONMode(structured);
-    let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[];
+    // Parse with gpt-4o-mini
+    const model = "gpt-4o-mini";
+    const { parsed, tokensUsed } = await callOpenAI_JSONMode(
+      model,
+      EXTRACT_ALL_PROMPT,
+      structured,
+      1200
+    );
 
+    let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[];
     events = postNormalizeEvents(events);
     events = dedupeEvents(events);
 
