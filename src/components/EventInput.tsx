@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { OpenAIService, type ParsedEvent } from '../services/openai';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase'; // ✅ for RPC call
+import { supabase } from '../lib/supabase'; // for RPC call
 import './EventInput.css';
 
 interface EventInputProps {
@@ -23,13 +23,13 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     if (!user) throw new Error('Not authenticated');
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
 
-    // ✅ Ensure profile + quotas exist
+    // Ensure profile + current-month quotas exist (server-side)
     const { error: rpcError } = await supabase.rpc('ensure_profile_and_current_quota');
     if (rpcError) throw new Error(`Quota provisioning failed: ${rpcError.message}`);
 
-    // Read quotas (with a small retry in case of race)
-    let tokenUsage = null;
-    let uploadQuota = null;
+    // Read quotas (tiny retry to avoid race)
+    let tokenUsage = null as Awaited<ReturnType<typeof DatabaseService.getTokenUsage>>;
+    let uploadQuota = null as Awaited<ReturnType<typeof DatabaseService.getUploadQuota>>;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       [tokenUsage, uploadQuota] = await Promise.all([
@@ -64,6 +64,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
 
     try {
       await checkQuotas(false);
+
       const result = await OpenAIService.parseNaturalLanguage(textInput);
 
       if (result.events.length === 0) {
@@ -72,7 +73,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      // ✅ No client writes — quotas update server-side
+      // No client writes — quotas are system-managed
       onEventsExtracted(result.events);
       setTextInput('');
     } catch (err: any) {
@@ -93,6 +94,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
 
     try {
       await checkQuotas(true);
+
       const result = await OpenAIService.parseFileContent(selectedFile);
 
       if (result.events.length === 0) {
@@ -101,7 +103,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      // ✅ No client writes — quotas update server-side
+      // No client writes — quotas are system-managed
       onEventsExtracted(result.events);
       setSelectedFile(null);
     } catch (err: any) {
