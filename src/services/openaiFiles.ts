@@ -1,8 +1,7 @@
-// src/services/openaiFiles.ts
-import mammoth from "mammoth";         // DOCX → text
-import * as XLSX from "xlsx";          // XLS/XLSX/CSV → text
+import mammoth from "mammoth";          // DOCX → text
+import * as XLSX from "xlsx";           // XLS/XLSX/CSV → text
 import * as pdfjsLib from "pdfjs-dist"; // PDF → text
-import Tesseract from "tesseract.js";  // Local OCR for images
+import Tesseract from "tesseract.js";   // Local OCR for images
 
 export interface ParsedEvent {
   event_name: string;
@@ -25,7 +24,6 @@ function estimateTokens(text: string): number {
 }
 
 function safeJsonParse(content: string): any {
-  // Hardened fallback in case JSON mode ever misbehaves
   let s = (content || "").replace(/```(json)?/g, "").trim();
   const fix = (x: string) => x.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
   try {
@@ -37,26 +35,39 @@ function safeJsonParse(content: string): any {
   }
 }
 
-/* ---------- naming rules shared with textbox ---------- */
-const DOCUMENT_SYSTEM_PROMPT = `You are a calendar event parser. Extract all events from the provided document and return ONLY valid JSON.
+function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
+  const seen = new Set<string>();
+  const out: ParsedEvent[] = [];
+  for (const e of events) {
+    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(e);
+    }
+  }
+  return out;
+}
 
-Current date for reference: ${new Date().toISOString().split('T')[0]}
+/* ---------- prompts ---------- */
+const BASE_RULES = `
+Naming & Formatting (critical):
+- "event_name" must be short, professional, and Title Case. Capitalize proper nouns.
+- Prefer patterns like "Integro Interview", "Physics Midterm", "Dentist Appointment", "Project Kickoff".
+- Do NOT include date/time or pronouns in event_name. ≤ 50 chars. Remove filler.
+- If no obvious tag, use null. Common tags: interview, exam, quiz, meeting, class, appointment, lab.
 
-Naming & Formatting Rules (critical):
-- Produce a clean, professional, SHORT Title-Case name for "event_name".
-- Capitalize proper nouns and significant words.
-- For interviews: prefer "Company Interview" when a single company exists (e.g., "Integro Interview").
-- Otherwise examples: "Physics Midterm", "CS 101 Lab", "Project Kickoff".
-- Do NOT include date/time or pronouns in event_name.
-- Keep event_name ≤ 50 chars; remove filler phrases.
-
-Other Rules:
-- If year is missing, use current year (${new Date().getFullYear()}).
-- If time is missing, set event_time to null (all-day).
-- Dates: YYYY-MM-DD
-- Times: HH:MM (24-hour)
-- Extract a short tag if obvious ("interview", "exam", "meeting", "class", "appointment"), else null.
+Parsing:
+- If year missing, use current year (${new Date().getFullYear()}).
+- Dates may appear as YYYY-MM-DD, MM/DD[/YY], M/D, Month D, Mon D, or "Oct 5", "October 5".
+- Times may appear as "12 pm", "12:00pm", "12-1 pm", "noon", "8:30 am". Convert to 24-hour "HH:MM".
+- If time missing, event_time = null (all-day).
 - If no events found, return empty array.
+`;
+
+const DOCUMENT_SYSTEM_PROMPT = `You are a calendar event parser. Extract events from the provided text lines and return ONLY valid JSON.
+
+Current date: ${new Date().toISOString().split("T")[0]}
+${BASE_RULES}
 
 Return JSON exactly like:
 {
@@ -70,6 +81,19 @@ Return JSON exactly like:
   ]
 }`;
 
+const FALLBACK_SYSTEM_PROMPT = `You are a calendar event parser. The user content is noisy structured text (rows/bullets). Scan aggressively for date/time expressions and synthesize concise events.
+
+Current date: ${new Date().toISOString().split("T")[0]}
+${BASE_RULES}
+
+Heuristics:
+- Lines containing due/due date, exam, quiz, midterm, class, lecture, lab, meeting, interview, appointment are likely events.
+- Combine adjacent context if needed (e.g., course code on one line, date on the next).
+- If a range is detected like "12–1 pm", pick the start time "12:00" (still HH:MM).
+- Ignore grading rubrics, policies, long prose without dates.
+
+Return JSON exactly like the previous format.`;
+
 /* ---------- deterministic extractors ---------- */
 async function extractFromDocx(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
@@ -81,7 +105,6 @@ async function extractFromXlsx(file: File): Promise<string> {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: "array" });
 
-  // Convert each sheet to CSV-like lines with a header
   const parts: string[] = [];
   for (const name of wb.SheetNames) {
     const sheet = wb.Sheets[name];
@@ -95,7 +118,7 @@ async function extractFromXlsx(file: File): Promise<string> {
 }
 
 async function extractFromPdf(file: File): Promise<string> {
-  // ensure worker if needed (CDN fallback)
+  // Worker fallback for Vite/browser
   // @ts-ignore
   if (pdfjsLib?.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
     try {
@@ -122,10 +145,9 @@ async function extractFromImageOCR(file: File): Promise<string> {
   return (res?.data?.text || "").trim();
 }
 
-/* ---------- structured plain text normalizer ---------- */
+/* ---------- normalizer ---------- */
 function toStructuredPlainText(raw: string): string {
-  // Collapse weird spacing, normalize bullets, keep one item per line
-  const cleaned = raw
+  const cleaned = (raw || "")
     .replace(/\r/g, "\n")
     .replace(/\t/g, " ")
     .replace(/[•●▪■]/g, "-")
@@ -133,12 +155,15 @@ function toStructuredPlainText(raw: string): string {
     .replace(/\n{2,}/g, "\n")
     .trim();
 
-  // Optionally drop super-long lines that likely aren't events
-  const lines = cleaned.split("\n").map(l => l.trim()).filter(Boolean);
+  const lines = cleaned
+    .split("\n")
+    .map(l => l.replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean);
+
   return lines.join("\n");
 }
 
-/* ---------- OpenAI JSON-mode call ---------- */
+/* ---------- OpenAI helpers (JSON mode) ---------- */
 async function callOpenAI_JSONMode(
   model: string,
   systemPrompt: string,
@@ -158,12 +183,12 @@ async function callOpenAI_JSONMode(
         {
           role: "user",
           content:
-            `The following is normalized plain text lines from a schedule.\n` +
+            `The following are normalized plain text lines from a schedule.\n` +
             `Treat each bullet/row/line as a potential event.\n` +
             `---BEGIN---\n${userContent}\n---END---`,
         },
       ],
-      temperature: 0.0,                 // deterministic
+      temperature: 0.0,
       max_tokens: maxTokens,
       response_format: { type: "json_object" }, // force strict JSON
     }),
@@ -187,7 +212,63 @@ async function callOpenAI_JSONMode(
   return { parsed, tokensUsed };
 }
 
-/* ---------- Public: route by file type ---------- */
+async function callOpenAI_Vision_JSON(
+  model: string,
+  systemPrompt: string,
+  base64Jpeg: string,
+  maxTokens: number
+) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: systemPrompt },
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Jpeg}` } },
+          ],
+        },
+      ],
+      temperature: 0.0,
+      max_tokens: maxTokens,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || "OpenAI API request failed");
+  }
+
+  const data = await res.json();
+  const content = data?.choices?.[0]?.message?.content ?? "";
+  const tokensUsed = data?.usage?.total_tokens ?? 0;
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    parsed = safeJsonParse(content);
+  }
+  return { parsed, tokensUsed };
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------- Public API ---------- */
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
@@ -195,7 +276,42 @@ export class OpenAIFilesService {
     const name = (file.name || "").toLowerCase();
     const type = (file.type || "").toLowerCase();
 
-    // 1) Deterministic extraction
+    // IMAGES: OCR → model; if empty, force Vision
+    if (type.startsWith("image/")) {
+      let totalTokens = 0;
+      let events: ParsedEvent[] = [];
+
+      // 1) Local OCR → structured → JSON mode
+      try {
+        const ocr = await extractFromImageOCR(file);
+        if (ocr && ocr.length >= 10) {
+          const structured = toStructuredPlainText(ocr);
+          if (estimateTokens(structured) <= MAX_CONTENT_TOKENS) {
+            const { parsed, tokensUsed } = await callOpenAI_JSONMode(
+              "gpt-4o", DOCUMENT_SYSTEM_PROMPT, structured, 900
+            );
+            events = (parsed.events || []) as ParsedEvent[];
+            totalTokens += tokensUsed;
+          }
+        }
+      } catch {
+        // ignore OCR failures, fall through to vision
+      }
+
+      // 2) If nothing useful, Vision pass (always allowed)
+      if (events.length === 0) {
+        const b64 = await fileToBase64(file);
+        const { parsed, tokensUsed } = await callOpenAI_Vision_JSON(
+          "gpt-4o", DOCUMENT_SYSTEM_PROMPT, b64, 1000
+        );
+        events = (parsed.events || []) as ParsedEvent[];
+        totalTokens += tokensUsed;
+      }
+
+      return { events: dedupeEvents(events), tokensUsed: totalTokens };
+    }
+
+    // DOCS: deterministic parse → structured → JSON mode (retry with fallback if empty)
     let raw = "";
     if (type.includes("word") || name.endsWith(".docx")) {
       raw = await extractFromDocx(file);
@@ -210,22 +326,13 @@ export class OpenAIFilesService {
       raw = await extractFromPdf(file);
     } else if (type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text();
-    } else if (type.startsWith("image/")) {
-      // Local OCR; if too thin, fallback to vision
-      raw = await extractFromImageOCR(file);
-      if (!raw || raw.length < 30) {
-        return this.parseImageWithVision(file);
-      }
     } else {
       throw new Error(`Unsupported file type: ${type || name}`);
     }
 
     if (!raw?.trim()) throw new Error("No text could be extracted from the file.");
 
-    // 2) Normalize to structured plain text
     const structured = toStructuredPlainText(raw);
-
-    // 3) Guardrail on size
     const estimatedTokens = estimateTokens(structured);
     if (estimatedTokens > MAX_CONTENT_TOKENS) {
       throw new Error(
@@ -233,68 +340,22 @@ export class OpenAIFilesService {
       );
     }
 
-    // 4) Model → JSON (same naming rules as textbox)
-    const { parsed, tokensUsed } = await callOpenAI_JSONMode(
-      "gpt-4o",                // or 'gpt-4o-mini' to save
-      DOCUMENT_SYSTEM_PROMPT,
-      structured,
-      1000
+    // First pass: main prompt
+    const { parsed: parsed1, tokensUsed: t1 } = await callOpenAI_JSONMode(
+      "gpt-4o", DOCUMENT_SYSTEM_PROMPT, structured, 1000
     );
+    let events: ParsedEvent[] = (parsed1.events || []) as ParsedEvent[];
+    let totalTokens = t1;
 
-    return { events: parsed.events || [], tokensUsed };
-  }
-
-  private static async parseImageWithVision(file: File): Promise<ParseResult> {
-    const base64 = await this.fileToBase64(file);
-
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: DOCUMENT_SYSTEM_PROMPT },
-              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } },
-            ],
-          },
-        ],
-        temperature: 0.0,
-        max_tokens: 1000,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || "OpenAI API request failed");
+    // Fallback: aggressive date scanner if empty
+    if (events.length === 0) {
+      const { parsed: parsed2, tokensUsed: t2 } = await callOpenAI_JSONMode(
+        "gpt-4o", FALLBACK_SYSTEM_PROMPT, structured, 1000
+      );
+      events = (parsed2.events || []) as ParsedEvent[];
+      totalTokens += t2;
     }
 
-    const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content ?? "";
-    const tokensUsed = data?.usage?.total_tokens ?? 0;
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      parsed = safeJsonParse(content);
-    }
-
-    return { events: parsed.events || [], tokensUsed };
-  }
-
-  private static async fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve((reader.result as string).split(",")[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    return { events: dedupeEvents(events), tokensUsed: totalTokens };
   }
 }
