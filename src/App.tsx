@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ModeProvider } from './contexts/ModeContext';
 import { LaunchScreen } from './components/LaunchScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { AuthPage } from './pages/AuthPage';
@@ -9,7 +10,6 @@ import { EventConfirmation } from './pages/EventConfirmation';
 import { SettingsPage } from './pages/SettingsPage';
 import { AccountPage } from './pages/AccountPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
-import { ExportPage } from './pages/ExportPage';
 import type { ParsedEvent } from './services/openai';
 import type { Database } from './lib/supabase';
 import { DatabaseService } from './services/database';
@@ -30,7 +30,7 @@ const supabase = createClient(
   }
 );
 
-type Page = 'landing' | 'calendar' | 'settings' | 'account' | 'subscription' | 'export' | 'eventConfirmation';
+type Page = 'landing' | 'calendar' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
 type Event = Database['public']['Tables']['events']['Row'];
 
 function AppContent() {
@@ -166,10 +166,6 @@ function AppContent() {
     return <SubscriptionPage onNavigate={handleNavigate} />;
   }
 
-  if (currentPage === 'export') {
-    return <ExportPage onNavigate={handleNavigate} />;
-  }
-
   return (
     <LandingPage
       onNavigate={handleNavigate}
@@ -210,7 +206,9 @@ function DebugAuth() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ModeProvider>
+        <AppContent />
+      </ModeProvider>
     </AuthProvider>
   );
 }

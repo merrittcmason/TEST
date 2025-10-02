@@ -15,6 +15,7 @@ export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
   const { user } = useAuth();
   const [todayEvents, setTodayEvents] = useState<Event[]>([]);
   const [currentTimePosition, setCurrentTimePosition] = useState(0);
+  const [visibleHours, setVisibleHours] = useState<number[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -33,6 +34,23 @@ export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
         });
 
         setTodayEvents(sortedEvents);
+
+        if (sortedEvents.length > 0) {
+          const timedEvents = sortedEvents.filter(e => e.time);
+          if (timedEvents.length > 0) {
+            const firstTime = timedEvents[0].time!;
+            const lastTime = timedEvents[timedEvents.length - 1].time!;
+            const firstHour = parseInt(firstTime.split(':')[0]);
+            const lastHour = parseInt(lastTime.split(':')[0]);
+            const startHour = Math.max(0, firstHour - 1);
+            const endHour = Math.min(23, lastHour + 2);
+            setVisibleHours(Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i));
+          } else {
+            setVisibleHours(Array.from({ length: 24 }, (_, i) => i));
+          }
+        } else {
+          setVisibleHours(Array.from({ length: 24 }, (_, i) => i));
+        }
       } catch (error) {
         console.error('Failed to load events:', error);
       }
@@ -63,12 +81,11 @@ export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
     return (totalMinutes / (24 * 60)) * 100;
   };
 
-  const hours = Array.from({ length: 24 }, (_, i) => i);
   const today = new Date();
 
   return (
     <div className="week-at-a-glance">
-      <h2 className="section-title">Today's Schedule</h2>
+      <h2 className="section-title">Today's Events</h2>
       <div className="today-schedule-card">
         <button className="schedule-header" onClick={() => onDateClick(today)}>
           <div className="schedule-date">
@@ -82,7 +99,7 @@ export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
 
         <div className="schedule-timeline-compact">
           <div className="timeline-hours-compact">
-            {hours.map(hour => (
+            {visibleHours.map(hour => (
               <div key={hour} className="hour-marker-compact">
                 <span className="hour-label-compact">
                   {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}

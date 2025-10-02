@@ -13,11 +13,12 @@ interface EventInputProps {
 
 export function EventInput({ onEventsExtracted }: EventInputProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<'text' | 'file'>('text');
   const [textInput, setTextInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPopup, setShowPopup] = useState(false);
+  const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -127,98 +128,117 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
       }
       setSelectedFile(file);
       setError('');
+      setShowPopup(false);
+      handleFileSubmit();
+    }
+  };
+
+  const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
+    setCaptureMode(option);
+    setShowPopup(false);
+    if (option === 'document' || option === 'picture') {
+      document.getElementById('file-input-hidden')?.click();
+    } else if (option === 'camera') {
+      document.getElementById('camera-input-hidden')?.click();
     }
   };
 
   return (
     <div className="event-input">
-      <div className="input-mode-switcher">
-        <button
-          className={`mode-btn ${mode === 'text' ? 'active' : ''}`}
-          onClick={() => setMode('text')}
+      <div className="pill-input-container">
+        <input
+          type="text"
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && textInput.trim()) {
+              e.preventDefault();
+              handleTextSubmit();
+            }
+          }}
+          placeholder="Start Typing"
+          className="pill-input"
           disabled={loading}
-        >
-          Text Input
-        </button>
-        <button
-          className={`mode-btn ${mode === 'file' ? 'active' : ''}`}
-          onClick={() => setMode('file')}
-          disabled={loading}
-        >
-          File Upload
-        </button>
-      </div>
+        />
 
-      {mode === 'text' ? (
-        <div className="text-input-mode">
-          <textarea
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Example: I have an interview with Integro October 5th at 12 pm"
-            className="event-textarea"
-            rows={4}
-            disabled={loading}
-          />
-          <div className="input-footer">
-            <span className="char-count">{textInput.length} characters</span>
+        <button
+          className="pill-plus-btn"
+          onClick={() => setShowPopup(!showPopup)}
+          disabled={loading}
+          title="Add from file or camera"
+        >
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+
+        <button
+          className="pill-submit-btn"
+          onClick={handleTextSubmit}
+          disabled={loading || !textInput.trim()}
+          title="Create event"
+        >
+          {loading ? (
+            <div className="loading-spinner-small" />
+          ) : (
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          )}
+        </button>
+
+        {showPopup && (
+          <div className="input-popup">
             <button
-              onClick={handleTextSubmit}
-              className="btn btn-primary"
-              disabled={loading || !textInput.trim()}
+              className="popup-option"
+              onClick={() => handlePopupOption('document')}
             >
-              {loading ? 'Processing...' : 'Create Event(s)'}
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Upload Document
+            </button>
+            <button
+              className="popup-option"
+              onClick={() => handlePopupOption('picture')}
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Upload Picture
+            </button>
+            <button
+              className="popup-option"
+              onClick={() => handlePopupOption('camera')}
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Open Camera
             </button>
           </div>
-        </div>
-      ) : (
-        <div className="file-input-mode">
-          <div className="file-upload-area">
-            <input
-              type="file"
-              id="file-input"
-              accept="image/*,.pdf,.txt,.doc,.docx,.xlsx,.xls,.csv"
-              onChange={handleFileChange}
-              className="file-input-hidden"
-              disabled={loading}
-            />
-            <label htmlFor="file-input" className="file-upload-label">
-              {selectedFile ? (
-                <div className="file-selected">
-                  <span className="file-name">{selectedFile.name}</span>
-                  <span className="file-size">
-                    ({(selectedFile.size / 1024).toFixed(1)} KB)
-                  </span>
-                </div>
-              ) : (
-                <div className="file-placeholder">
-                  <svg
-                    className="upload-icon"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  <p>Click to upload or drag and drop</p>
-                  <p className="file-hint">Images, PDFs, Word, Excel, or text files</p>
-                </div>
-              )}
-            </label>
-          </div>
-          <button
-            onClick={handleFileSubmit}
-            className="btn btn-primary"
-            disabled={loading || !selectedFile}
-          >
-            {loading ? 'Processing...' : 'Create Event(s) from File'}
-          </button>
-        </div>
-      )}
+        )}
+      </div>
+
+      <input
+        type="file"
+        id="file-input-hidden"
+        accept={captureMode === 'document' ? '.pdf,.txt,.doc,.docx,.xlsx,.xls,.csv' : 'image/*'}
+        onChange={handleFileChange}
+        className="file-input-hidden"
+        style={{ display: 'none' }}
+      />
+
+      <input
+        type="file"
+        id="camera-input-hidden"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileChange}
+        className="file-input-hidden"
+        style={{ display: 'none' }}
+      />
 
       {error && <div className="input-error">{error}</div>}
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, startOfWeek, endOfWeek, addMonths, subMonths, addWeeks, subWeeks } from 'date-fns';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import type { Database } from '../lib/supabase';
@@ -16,25 +16,45 @@ interface CalendarViewProps {
 export function CalendarView({ selectedDate, onDateSelect, onEventClick }: CalendarViewProps) {
   const { user } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(selectedDate);
+  const [currentWeek, setCurrentWeek] = useState(selectedDate);
   const [events, setEvents] = useState<Event[]>([]);
-  const [view, setView] = useState<'month' | 'week' | 'day'>('month');
+  const [view, setView] = useState<'month' | 'week'>('month');
+  const [selectedLabel, setSelectedLabel] = useState<string>('');
+  const [availableLabels, setAvailableLabels] = useState<string[]>([]);
+  const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
     const loadEvents = async () => {
       try {
-        const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
-        const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+        let start, end;
+        if (view === 'week') {
+          start = format(startOfWeek(currentWeek), 'yyyy-MM-dd');
+          end = format(endOfWeek(currentWeek), 'yyyy-MM-dd');
+        } else {
+          start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
+          end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+        }
         const loadedEvents = await DatabaseService.getEvents(user.id, start, end);
-        setEvents(loadedEvents);
+
+        const uniqueLabels = Array.from(
+          new Set(loadedEvents.map(e => (e as any).label).filter((label): label is string => label !== null && label !== ''))
+        );
+        setAvailableLabels(uniqueLabels);
+
+        if (selectedLabel) {
+          setEvents(loadedEvents.filter(e => (e as any).label === selectedLabel));
+        } else {
+          setEvents(loadedEvents);
+        }
       } catch (error) {
         console.error('Failed to load events:', error);
       }
     };
 
     loadEvents();
-  }, [user, currentMonth]);
+  }, [user, currentMonth, currentWeek, view, selectedLabel]);
 
   const getDaysInMonth = () => {
     const start = startOfWeek(startOfMonth(currentMonth));
@@ -47,62 +67,132 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
     return events.filter(event => event.date === dateStr);
   };
 
-  const handlePrevMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1));
+  const handlePrev = () => {
+    if (view === 'week') {
+      setCurrentWeek(subWeeks(currentWeek, 1));
+    } else {
+      setCurrentMonth(subMonths(currentMonth, 1));
+    }
   };
 
-  const handleNextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1));
+  const handleNext = () => {
+    if (view === 'week') {
+      setCurrentWeek(addWeeks(currentWeek, 1));
+    } else {
+      setCurrentMonth(addMonths(currentMonth, 1));
+    }
   };
 
   const handleToday = () => {
     const today = new Date();
     setCurrentMonth(today);
+    setCurrentWeek(today);
     onDateSelect(today);
   };
+
+  const handleMonthYearChange = (year: number, month: number) => {
+    const newDate = new Date(year, month, 1);
+    setCurrentMonth(newDate);
+    setShowMonthYearPicker(false);
+  };
+
+  const getWeekDays = () => {
+    const start = startOfWeek(currentWeek);
+    const end = endOfWeek(currentWeek);
+    return eachDayOfInterval({ start, end });
+  };
+
+  const getWeekEventsForDay = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return events.filter(event => event.date === dateStr);
+  };
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
 
   const days = getDaysInMonth();
 
   return (
     <div className="calendar-view">
       <div className="calendar-header">
-        <div className="calendar-nav">
-          <button onClick={handlePrevMonth} className="btn btn-secondary nav-btn">
-            ←
-          </button>
-          <h2 className="calendar-month-title">
-            {format(currentMonth, 'MMMM yyyy')}
-          </h2>
-          <button onClick={handleNextMonth} className="btn btn-secondary nav-btn">
-            →
-          </button>
-        </div>
-
-        <div className="calendar-controls">
-          <button onClick={handleToday} className="btn btn-secondary">
-            Today
-          </button>
-          <div className="view-switcher">
-            <button
-              className={`view-btn ${view === 'month' ? 'active' : ''}`}
-              onClick={() => setView('month')}
-            >
-              Month
+        <div className="calendar-top-row">
+          <div className="calendar-nav">
+            <button onClick={handlePrev} className="btn btn-secondary nav-btn">
+              ←
             </button>
             <button
-              className={`view-btn ${view === 'week' ? 'active' : ''}`}
-              onClick={() => setView('week')}
+              className="calendar-month-title-btn"
+              onClick={() => setShowMonthYearPicker(!showMonthYearPicker)}
             >
-              Week
+              {view === 'week'
+                ? `${format(startOfWeek(currentWeek), 'MMM d')} - ${format(endOfWeek(currentWeek), 'MMM d, yyyy')}`
+                : format(currentMonth, 'MMMM yyyy')}
             </button>
-            <button
-              className={`view-btn ${view === 'day' ? 'active' : ''}`}
-              onClick={() => setView('day')}
-            >
-              Day
+            <button onClick={handleNext} className="btn btn-secondary nav-btn">
+              →
             </button>
           </div>
+
+          <div className="calendar-controls">
+            <select
+              className="label-filter"
+              value={selectedLabel}
+              onChange={(e) => setSelectedLabel(e.target.value)}
+            >
+              <option value="">All Labels</option>
+              {availableLabels.length === 0 ? (
+                <option disabled>You haven't created any labels yet</option>
+              ) : (
+                availableLabels.map(label => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))
+              )}
+            </select>
+            <button onClick={handleToday} className="btn btn-secondary">
+              Today
+            </button>
+            <div className="view-switcher">
+              <button
+                className={`view-btn ${view === 'month' ? 'active' : ''}`}
+                onClick={() => setView('month')}
+              >
+                Month
+              </button>
+              <button
+                className={`view-btn ${view === 'week' ? 'active' : ''}`}
+                onClick={() => setView('week')}
+              >
+                Week
+              </button>
+            </div>
+          </div>
         </div>
+
+        {showMonthYearPicker && (
+          <div className="month-year-picker">
+            <select
+              value={currentMonth.getFullYear()}
+              onChange={(e) => handleMonthYearChange(parseInt(e.target.value), currentMonth.getMonth())}
+            >
+              {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <select
+              value={currentMonth.getMonth()}
+              onChange={(e) => handleMonthYearChange(currentMonth.getFullYear(), parseInt(e.target.value))}
+            >
+              {Array.from({ length: 12 }, (_, i) => i).map(month => (
+                <option key={month} value={month}>
+                  {format(new Date(2000, month, 1), 'MMMM')}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {view === 'month' && (
@@ -157,9 +247,53 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
         </div>
       )}
 
-      {(view === 'week' || view === 'day') && (
-        <div className="calendar-message">
-          {view === 'week' ? 'Week' : 'Day'} view coming soon!
+      {view === 'week' && (
+        <div className="week-view">
+          <div className="week-grid">
+            <div className="week-time-column">
+              <div className="week-time-header"></div>
+              {hours.map(hour => (
+                <div key={hour} className="week-hour-label">
+                  {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                </div>
+              ))}
+            </div>
+            {getWeekDays().map((day, dayIndex) => (
+              <div key={dayIndex} className="week-day-column">
+                <div className="week-day-header">
+                  <div className="week-day-name">{format(day, 'EEE')}</div>
+                  <div className={`week-day-number ${isSameDay(day, new Date()) ? 'today' : ''}`}>
+                    {format(day, 'd')}
+                  </div>
+                </div>
+                <div className="week-hours-container">
+                  {hours.map(hour => (
+                    <div key={hour} className="week-hour-cell"></div>
+                  ))}
+                  <div className="week-events-overlay">
+                    {getWeekEventsForDay(day).map(event => {
+                      const time = event.time || '00:00';
+                      const [hours, minutes] = time.split(':').map(Number);
+                      const topPercent = ((hours * 60 + minutes) / (24 * 60)) * 100;
+                      return (
+                        <div
+                          key={event.id}
+                          className="week-event"
+                          style={{ top: `${topPercent}%` }}
+                          onClick={() => onEventClick(event)}
+                        >
+                          <div className="week-event-time">
+                            {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
+                          </div>
+                          <div className="week-event-name">{event.name}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

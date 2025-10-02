@@ -243,4 +243,60 @@ export class DatabaseService {
     if (error) throw error;
     return data as Subscription;
   }
+
+  /** -------------------- MODE MANAGEMENT -------------------- */
+
+  static async updateUserMode(
+    userId: string,
+    mode: string
+  ): Promise<User> {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ mode })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  /** -------------------- DRAFT EVENTS -------------------- */
+
+  static async createDraftEvents(
+    drafts: any[]
+  ): Promise<any[]> {
+    const uid = await getCurrentUserId();
+    const payload = drafts.map(e => ({
+      ...e,
+      user_id: e.user_id ?? uid,
+    }));
+
+    const { data, error } = await supabase
+      .from('draft_events')
+      .insert(payload)
+      .select();
+
+    if (error) throw error;
+    return data as any[];
+  }
+
+  static async getDraftEvents(userId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('draft_events')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async deleteDraftEvents(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('draft_events')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  }
 }

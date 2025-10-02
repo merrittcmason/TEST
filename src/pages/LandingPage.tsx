@@ -1,7 +1,8 @@
 import { HamburgerMenu } from '../components/HamburgerMenu';
 import { SubscriptionCard } from '../components/SubscriptionCard';
 import { WeekAtAGlance } from '../components/WeekAtAGlance';
-import { Notifications } from '../components/Notifications';
+import { AssignmentsDue } from '../components/AssignmentsDue';
+import { useMode } from '../contexts/ModeContext';
 import './LandingPage.css';
 
 interface LandingPageProps {
@@ -10,6 +11,8 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onNavigate, onDateClick }: LandingPageProps) {
+  const { mode } = useMode();
+
   return (
     <div className="landing-page">
       <HamburgerMenu onNavigate={onNavigate} />
@@ -17,8 +20,8 @@ export function LandingPage({ onNavigate, onDateClick }: LandingPageProps) {
       <div className="landing-container">
         <main className="landing-content">
           <SubscriptionCard />
+          {mode === 'education' && <AssignmentsDue onDateClick={onDateClick} />}
           <WeekAtAGlance onDateClick={onDateClick} />
-          <Notifications />
         </main>
       </div>
     </div>

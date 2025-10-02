@@ -5,6 +5,7 @@ import { EventInput } from '../components/EventInput';
 import { HamburgerMenu } from '../components/HamburgerMenu';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
+import { useMode, MODE_CONFIG } from '../contexts/ModeContext';
 import type { ParsedEvent } from '../services/openai';
 import type { Database } from '../lib/supabase';
 import './CalendarPage.css';
@@ -20,6 +21,7 @@ interface CalendarPageProps {
 
 export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavigate, onEventsExtracted }: CalendarPageProps) {
   const { user } = useAuth();
+  const { mode } = useMode();
   const [selectedDate, setSelectedDate] = useState(initialDate || new Date());
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(initialEvent || null);
   const [showDayDetail, setShowDayDetail] = useState(!!initialEvent);
@@ -141,6 +143,11 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
   return (
     <div className="calendar-page">
       <HamburgerMenu onNavigate={onNavigate} />
+
+      <div className="mode-indicator">
+        <span className="mode-icon">{MODE_CONFIG[mode].icon}</span>
+        <span className="mode-text">{MODE_CONFIG[mode].name} Mode</span>
+      </div>
 
       <div className="calendar-container">
         <main className="calendar-content">

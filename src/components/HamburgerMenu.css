@@ -68,8 +68,10 @@
   background-color: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   z-index: 1001;
-  padding: 80px 0 24px;
+  padding: 24px 0;
   box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-list {
@@ -110,8 +112,136 @@
   color: var(--error) !important;
 }
 
+.mode-slider {
+  padding: 16px 20px 20px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 8px;
+}
+
+.mode-slider-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+.mode-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  background-color: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  gap: 4px;
+}
+
+.mode-option:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--primary);
+}
+
+.mode-option.active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.mode-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.mode-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.mode-option.active .mode-name {
+  color: white;
+}
+
+.enterprise-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.enterprise-modal {
+  background-color: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: var(--shadow-xl);
+  animation: slideUp 0.3s ease;
+}
+
+.enterprise-modal-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.enterprise-icon {
+  font-size: 4rem;
+  line-height: 1;
+}
+
+.enterprise-modal h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.enterprise-modal p {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 768px) {
   .hamburger-menu {
-    width: 240px;
+    width: 260px;
+  }
+
+  .mode-options {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mode-name {
+    font-size: 0.7rem;
   }
 }

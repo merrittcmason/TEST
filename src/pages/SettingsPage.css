@@ -173,6 +173,182 @@
   border-color: var(--accent-primary);
 }
 
+.delete-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+
+.delete-modal {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.delete-modal-header {
+  padding: 24px;
+  border-bottom: 2px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--bg-tertiary);
+}
+
+.delete-modal-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.delete-modal-content {
+  padding: 24px;
+  overflow: auto;
+  flex: 1;
+}
+
+.delete-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  background-color: var(--bg-tertiary);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.delete-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.delete-tab.active {
+  background-color: var(--primary);
+  color: white;
+}
+
+.delete-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.delete-select {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.no-data-message {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px;
+}
+
+.events-selection-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+}
+
+.event-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.event-checkbox-label:last-child {
+  border-bottom: none;
+}
+
+.event-checkbox-label:hover {
+  background-color: var(--bg-hover);
+}
+
+.event-checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.event-checkbox-info {
+  flex: 1;
+}
+
+.event-checkbox-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.event-checkbox-meta {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-meta-tag {
+  padding: 2px 8px;
+  background-color: var(--bg-tertiary);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 768px) {
   .settings-container {
     padding: 80px 16px 24px;
@@ -191,5 +367,13 @@
   .theme-option {
     flex: 1;
     text-align: center;
+  }
+
+  .delete-mode-tabs {
+    flex-direction: column;
+  }
+
+  .delete-tab {
+    width: 100%;
   }
 }
