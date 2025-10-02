@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabase';
-import { DatabaseService } from './database';
 import type { User } from '@supabase/supabase-js';
 
 export class AuthService {
@@ -7,16 +6,15 @@ export class AuthService {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          name: name || null,
+        },
+      },
     });
 
     if (error) throw error;
     if (!data.user) throw new Error('Failed to create user');
-
-    await DatabaseService.createUser(data.user.id, email, name);
-
-    const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-    await DatabaseService.createOrUpdateTokenUsage(data.user.id, currentMonth, 0, 500);
-    await DatabaseService.createOrUpdateUploadQuota(data.user.id, currentMonth, 0, 1);
 
     return data;
   }
@@ -75,17 +73,6 @@ export class AuthService {
     return supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
         const user = session?.user || null;
-
-        if (user && event === 'SIGNED_IN') {
-          const dbUser = await DatabaseService.getUser(user.id);
-          if (!dbUser) {
-            await DatabaseService.createUser(user.id, user.email!, user.user_metadata.name);
-            const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-            await DatabaseService.createOrUpdateTokenUsage(user.id, currentMonth, 0, 500);
-            await DatabaseService.createOrUpdateUploadQuota(user.id, currentMonth, 0, 1);
-          }
-        }
-
         callback(event, user);
       })();
     });

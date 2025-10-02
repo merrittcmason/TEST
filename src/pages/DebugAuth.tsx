@@ -1,11 +1,11 @@
-// drop this anywhere that renders (e.g., /debug-auth)
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(import.meta.env.VITE_SUPABASE_URL!, import.meta.env.VITE_SUPABASE_ANON_KEY!, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true, // must be true for OAuth/magic-link callbacks
+    detectSessionInUrl: true,
   },
 });
 

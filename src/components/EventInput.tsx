@@ -19,11 +19,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
 
-    let dbUser = await DatabaseService.getUser(user.id);
-    if (!dbUser) {
-      await DatabaseService.createUser(user.id, user.email!, user.user_metadata?.name);
-    }
-
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
     let [tokenUsage, uploadQuota] = await Promise.all([
       DatabaseService.getTokenUsage(user.id, currentMonth),
