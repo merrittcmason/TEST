@@ -174,4 +174,26 @@
     right: auto;
     left: 0;
   }
+  /* EventInput.css */
+.pill-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* tweak spacing as you like */
+}
+
+.left-of-pill {
+  /* if your previous .pill-plus-btn assumed absolute positioning inside the pill, reset it */
+  position: static;
+  flex: 0 0 auto;
+}
+
+.pill-input-container {
+  flex: 1 1 auto;
+  display: flex;
+}
+
+.pill-input {
+  width: 100%;
+}
+
 }
