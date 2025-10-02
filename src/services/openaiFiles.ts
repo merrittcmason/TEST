@@ -36,6 +36,33 @@ function safeJsonParse(content: string): any {
   }
 }
 
+function toTitleCase(s: string): string {
+  return (s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ");
+}
+
+function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
+  return (events || []).map(e => {
+    let name = (e.event_name || "").trim();
+    name = toTitleCase(name).replace(/\s{2,}/g, " ");
+    if (name.length > 60) name = name.slice(0, 57).trimEnd() + "...";
+    const event_time =
+      typeof e.event_time === "string" && e.event_time.trim() === ""
+        ? null
+        : e.event_time;
+    return {
+      event_name: name,
+      event_date: e.event_date,
+      event_time,
+      event_tag: e.event_tag ?? null,
+    };
+  });
+}
+
 function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>();
   const out: ParsedEvent[] = [];
@@ -70,10 +97,9 @@ Parsing:
 - If time missing, event_time = null (all-day).
 
 Table/Row semantics:
-- The input is normalized lines; many lines represent TABLE ROWS joined with " | ".
+- Input lines often represent TABLE ROWS joined with " | ".
 - Treat each line independently; if a line implies a date header + details, assign that date to the entire line.
-- If a line lacks an explicit date but is clearly under a dated row/header (e.g., "2025-10-05 | ..."), inherit that date from the same line.
-- If a single line contains multiple distinct items (e.g., "HW 3 due; Quiz 2"), create MULTIPLE events (one per item) for the SAME date.
+- If a single line contains multiple distinct items (e.g., "HW 3 due; Quiz 2"), create MULTIPLE events for the SAME date.
 
 Coverage:
 - Include ALL homework/assignments, quizzes, exams, labs, classes, meetings, holidays, school breaks/closures, cancellations ("no class"), etc.
@@ -102,13 +128,12 @@ async function extractFromDocx(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const { value: html } = await (mammoth as any).convertToHtml({ arrayBuffer });
 
-  // Browser DOMParser is available in the web app runtime
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
   const parts: string[] = [];
 
-  // 1) Tables → rows
+  // Tables
   doc.querySelectorAll("table").forEach((table) => {
     table.querySelectorAll("tr").forEach((tr) => {
       const cells = Array.from(tr.querySelectorAll("th,td"))
@@ -119,13 +144,12 @@ async function extractFromDocx(file: File): Promise<string> {
     });
   });
 
-  // 2) Lists and paragraphs (for non-table content)
+  // Lists & paragraphs
   doc.querySelectorAll("li, p").forEach((el) => {
     const t = el.textContent?.replace(/\s+/g, " ").trim();
     if (t) parts.push(t);
   });
 
-  // Dedup and normalize
   const lines = [...new Set(parts)].map((s) => s.trim()).filter(Boolean);
   return lines.join("\n");
 }
@@ -140,7 +164,6 @@ async function extractFromXlsx(file: File): Promise<string> {
     const csv = XLSX.utils.sheet_to_csv(sheet);
     if (csv && csv.trim()) {
       parts.push(`[Sheet: ${name}]`);
-      // One row per line already
       parts.push(csv.trim());
     }
   }
@@ -164,7 +187,6 @@ async function extractFromPdf(file: File): Promise<string> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    // Keep items in order; join with spaces; line breaks are noisy in PDFs
     const pageText = (content.items || []).map((it: any) => it.str).join(" ");
     text += pageText + "\n";
   }
@@ -178,7 +200,6 @@ async function extractFromImageOCR(file: File): Promise<string> {
 
 /* ---------- normalizer ---------- */
 function toStructuredPlainText(raw: string): string {
-  // Normalize bullets, collapse excess space, keep one logical item per line
   const cleaned = (raw || "")
     .replace(/\r/g, "\n")
     .replace(/\t/g, " ")
@@ -187,7 +208,6 @@ function toStructuredPlainText(raw: string): string {
     .replace(/\n{2,}/g, "\n")
     .trim();
 
-  // If CSV blocks exist (from XLSX), keep those line-by-line
   const lines = cleaned
     .split("\n")
     .map((l) => l.replace(/\s{2,}/g, " ").trim())
@@ -196,7 +216,7 @@ function toStructuredPlainText(raw: string): string {
   return lines.join("\n");
 }
 
-/* ---------- OpenAI helpers (JSON mode) ---------- */
+/* ---------- OpenAI helpers (JSON mode; always safe parser) ---------- */
 async function callOpenAI_JSONMode(
   model: string,
   systemPrompt: string,
@@ -223,7 +243,7 @@ async function callOpenAI_JSONMode(
       ],
       temperature: 0.0,
       max_tokens: maxTokens,
-      response_format: { type: "json_object" }, // strict JSON
+      response_format: { type: "json_object" },
     }),
   });
 
@@ -236,12 +256,7 @@ async function callOpenAI_JSONMode(
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
 
-  let parsed: any;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    parsed = safeJsonParse(content);
-  }
+  const parsed = safeJsonParse(content); // <-- always hardened
   return { parsed, tokensUsed };
 }
 
@@ -283,12 +298,7 @@ async function callOpenAI_Vision_JSON(
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
 
-  let parsed: any;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    parsed = safeJsonParse(content);
-  }
+  const parsed = safeJsonParse(content); // <-- always hardened
   return { parsed, tokensUsed };
 }
 
@@ -304,7 +314,7 @@ async function fileToBase64(file: File): Promise<string> {
 /* ---------- Public: route by file type ---------- */
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
-    const model = "gpt-4o"; // switch to 'gpt-4o-mini' if you want cheaper
+    const model = "gpt-4o";
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
 
     const name = (file.name || "").toLowerCase();
@@ -340,13 +350,14 @@ export class OpenAIFilesService {
         totalTokens += tokensUsed;
       }
 
+      events = postNormalizeEvents(events);
       return { events: dedupeEvents(events), tokensUsed: totalTokens };
     }
 
     // DOCS: DOCX (HTML tables flattened), XLSX/CSV, PDF, TXT
     let raw = "";
     if (type.includes("word") || name.endsWith(".docx")) {
-      raw = await extractFromDocx(file);        // <-- now preserves table rows
+      raw = await extractFromDocx(file);
     } else if (
       type.includes("excel") ||
       name.endsWith(".xlsx") ||
@@ -379,7 +390,7 @@ export class OpenAIFilesService {
     let events: ParsedEvent[] = (parsed1.events || []) as ParsedEvent[];
     let totalTokens = t1;
 
-    // Fallback: aggressive scanner if empty or clearly under-counted (heuristic)
+    // Fallback: aggressive scanner if empty or clearly under-counted
     if (events.length === 0 || events.length < 5) {
       const { parsed: parsed2, tokensUsed: t2 } = await callOpenAI_JSONMode(
         model, FALLBACK_SYSTEM_PROMPT, structured, 1000
@@ -388,6 +399,7 @@ export class OpenAIFilesService {
       totalTokens += t2;
     }
 
+    events = postNormalizeEvents(events);
     return { events: dedupeEvents(events), tokensUsed: totalTokens };
   }
 }
