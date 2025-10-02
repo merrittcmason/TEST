@@ -1,8 +1,8 @@
 // src/services/openaiFiles.ts
-import mammoth from "mammoth";           // DOCX → HTML/text
-import * as XLSX from "xlsx";            // XLS/XLSX/CSV → text
-import * as pdfjsLib from "pdfjs-dist";  // PDF → text
-import Tesseract from "tesseract.js";    // Local OCR for images
+import mammoth from "mammoth";            // DOCX → HTML/text
+import * as XLSX from "xlsx";             // XLS/XLSX/CSV → text
+import * as pdfjsLib from "pdfjs-dist";   // PDF → page rendering
+import Tesseract from "tesseract.js";     // OCR for images & rendered PDF pages
 
 export interface ParsedEvent {
   event_name: string;
@@ -18,8 +18,10 @@ export interface ParseResult {
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const MAX_CONTENT_TOKENS = 2000;
+const MAX_PDF_PAGES = 20;         // guardrail for very large PDFs
+const OCR_DPI_SCALE = 1.5;        // PDF render scale for decent OCR quality
 
-/* ---------- utils ---------- */
+/* -------------------- utils -------------------- */
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4);
 }
@@ -41,19 +43,22 @@ function toTitleCase(s: string): string {
     .trim()
     .replace(/\s+/g, " ")
     .split(" ")
-    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
     .join(" ");
 }
 
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
-  return (events || []).map(e => {
+  return (events || []).map((e) => {
     let name = (e.event_name || "").trim();
     name = toTitleCase(name).replace(/\s{2,}/g, " ");
     if (name.length > 60) name = name.slice(0, 57).trimEnd() + "...";
+
+    // Normalize time field: "" -> null
     const event_time =
       typeof e.event_time === "string" && e.event_time.trim() === ""
         ? null
         : e.event_time;
+
     return {
       event_name: name,
       event_date: e.event_date,
@@ -76,64 +81,94 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out;
 }
 
-/* ---------- prompts (recall first; extract ALL items) ---------- */
-const BASE_RULES = `
-Goal: MAXIMUM RECALL. Extract ALL events, not just major ones.
-Create multiple events on the same date if multiple items exist.
+/* -------------------- prompts -------------------- */
+const EXTRACT_ALL_PROMPT = `You are an expert schedule harvester. Input is OCR text from a syllabus or business/class schedule (tables may be flattened as lines, sometimes using " | " between cells).
 
-Naming & Formatting (critical):
-- "event_name" must be short, professional, Title Case. Capitalize proper nouns.
-- Prefer patterns like "Integro Interview", "Homework 3", "Physics Midterm", "No Class (Holiday)", "School Closed".
-- Do NOT include date/time or pronouns in event_name. ≤ 50 chars. Remove filler.
+Your job: MAXIMUM RECALL. Extract EVERY dated item: homework, assignments, quizzes, exams, labs, classes, meetings, interviews, office hours, holidays, breaks, "no class"/school closed—everything. If a single date has multiple items, create multiple events.
 
-Tags (lowercase or null):
-- interview, exam, midterm, quiz, homework, assignment, class, lecture, lab, meeting, appointment, holiday, break, no_class, school_closed, other.
+Output rules:
+- Schema ONLY:
+  {
+    "events": [
+      {
+        "event_name": "Title-Case Short Name",
+        "event_date": "YYYY-MM-DD",
+        "event_time": "HH:MM" | null,
+        "event_tag": "interview|exam|midterm|quiz|homework|assignment|class|lecture|lab|meeting|appointment|holiday|break|no_class|school_closed|other" | null
+      }
+    ]
+  }
+- Title-Case, professional, ≤ 50 chars; no dates/times/pronouns in names. Examples: "Integro Interview", "Homework 3", "Physics Midterm", "No Class (Holiday)".
+- Use current year if missing (${new Date().getFullYear()}).
+- Accept dates like "YYYY-MM-DD", "MM/DD", "M/D", "Oct 5", "October 5".
+- Times: parse "12 pm", "12:00pm", "12–1 pm", "noon", "midnight", "11:59 pm". Convert to 24-hour "HH:MM".
+  - "noon" → "12:00"
+  - "midnight" → "00:00"
+  - ranges use START time (e.g., "12–1 pm" → "12:00")
+  - if text says due/submit/turn-in but NO time → "23:59"
+- If no time at all → event_time = null (all-day).
+- If a line contains multiple items (e.g., "HW 3 due; Quiz 2") → create multiple events with the SAME date.
+- Prefer a specific tag if obvious; else null.
+- Be comprehensive—DO NOT skip minor items.
+Return ONLY valid JSON—no commentary, no markdown, no trailing commas.`;
 
-Parsing:
-- If year missing, use current year (${new Date().getFullYear()}).
-- Dates may appear as YYYY-MM-DD, MM/DD[/YY], M/D, Month D, Mon D (e.g., Oct 5).
-- Times may appear as "12 pm", "12:00pm", "12–1 pm", "noon", "11:59 pm". Convert to 24-hour "HH:MM".
-- If a time range exists, use the START time.
-- If time missing, event_time = null (all-day).
+/* -------------------- OCR paths -------------------- */
+async function ocrFromImageFile(file: File): Promise<string> {
+  const res = await Tesseract.recognize(file, "eng");
+  return (res?.data?.text || "").trim();
+}
 
-Table/Row semantics:
-- Input lines often represent TABLE ROWS joined with " | ".
-- Treat each line independently; if a line implies a date header + details, assign that date to the entire line.
-- If a single line contains multiple distinct items (e.g., "HW 3 due; Quiz 2"), create MULTIPLE events for the SAME date.
+async function ocrFromPdf(file: File): Promise<string> {
+  // Set worker (browser) if missing
+  // @ts-ignore
+  if (pdfjsLib?.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    try {
+      // @ts-ignore
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    } catch {}
+  }
 
-Coverage:
-- Include ALL homework/assignments, quizzes, exams, labs, classes, meetings, holidays, school breaks/closures, cancellations ("no class"), etc.
-- DO NOT skip minor items.
-- If unclear, make a best effort and set "event_tag" = "other".
+  const data = new Uint8Array(await file.arrayBuffer());
+  const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
 
-Output schema ONLY:
-{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM" | null, "event_tag": "..." | null } ] }
-`;
+  let text = "";
+  const pageCount = Math.min(pdf.numPages, MAX_PDF_PAGES);
 
-const DOCUMENT_SYSTEM_PROMPT = `You are a calendar event parser. Extract events from the provided lines and return ONLY valid JSON.
+  // Reusable canvas for rendering
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
 
-Current date: ${new Date().toISOString().split("T")[0]}
-${BASE_RULES}
-`;
+  for (let i = 1; i <= pageCount; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: OCR_DPI_SCALE });
 
-const FALLBACK_SYSTEM_PROMPT = `You are a calendar event parser. The content may be messy. Scan aggressively for ALL date/time expressions and synthesize concise events. Do NOT filter by importance.
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
 
-Current date: ${new Date().toISOString().split("T")[0]}
-${BASE_RULES}
-`;
+    await page.render({ canvasContext: ctx as any, viewport }).promise;
 
-/* ---------- deterministic extractors ---------- */
-// DOCX → HTML → flatten tables to lines: "cell1 | cell2 | cell3"
-async function extractFromDocx(file: File): Promise<string> {
+    // Tesseract supports HTMLCanvasElement directly
+    const result = await Tesseract.recognize(canvas, "eng");
+    if (result?.data?.text) {
+      text += result.data.text + "\n";
+    }
+  }
+
+  return text.trim();
+}
+
+/* -------------------- non-OCR extractors (browser-friendly) -------------------- */
+async function extractTextFromDocx(file: File): Promise<string> {
+  // Convert to HTML, then flatten tables into "cell | cell | cell" lines + body text
   const arrayBuffer = await file.arrayBuffer();
   const { value: html } = await (mammoth as any).convertToHtml({ arrayBuffer });
-
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
   const parts: string[] = [];
 
-  // Tables
+  // Tables → rows
   doc.querySelectorAll("table").forEach((table) => {
     table.querySelectorAll("tr").forEach((tr) => {
       const cells = Array.from(tr.querySelectorAll("th,td"))
@@ -144,7 +179,7 @@ async function extractFromDocx(file: File): Promise<string> {
     });
   });
 
-  // Lists & paragraphs
+  // Lists and paragraphs
   doc.querySelectorAll("li, p").forEach((el) => {
     const t = el.textContent?.replace(/\s+/g, " ").trim();
     if (t) parts.push(t);
@@ -154,7 +189,7 @@ async function extractFromDocx(file: File): Promise<string> {
   return lines.join("\n");
 }
 
-async function extractFromXlsx(file: File): Promise<string> {
+async function extractTextFromXlsx(file: File): Promise<string> {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: "array" });
 
@@ -170,35 +205,7 @@ async function extractFromXlsx(file: File): Promise<string> {
   return parts.join("\n").trim();
 }
 
-async function extractFromPdf(file: File): Promise<string> {
-  // Worker fallback for Vite/browser
-  // @ts-ignore
-  if (pdfjsLib?.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    try {
-      // @ts-ignore
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    } catch {}
-  }
-  const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
-
-  let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = (content.items || []).map((it: any) => it.str).join(" ");
-    text += pageText + "\n";
-  }
-  return text.trim();
-}
-
-async function extractFromImageOCR(file: File): Promise<string> {
-  const res = await Tesseract.recognize(file, "eng");
-  return (res?.data?.text || "").trim();
-}
-
-/* ---------- normalizer ---------- */
+/* -------------------- normalizer -------------------- */
 function toStructuredPlainText(raw: string): string {
   const cleaned = (raw || "")
     .replace(/\r/g, "\n")
@@ -216,13 +223,10 @@ function toStructuredPlainText(raw: string): string {
   return lines.join("\n");
 }
 
-/* ---------- OpenAI helpers (JSON mode; always safe parser) ---------- */
+/* -------------------- OpenAI (JSON mode) -------------------- */
 async function callOpenAI_JSONMode(
-  model: string,
-  systemPrompt: string,
-  userContent: string,
-  maxTokens: number
-) {
+  userContent: string
+): Promise<{ parsed: any; tokensUsed: number }> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -230,20 +234,20 @@ async function callOpenAI_JSONMode(
       Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model,
+      model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: EXTRACT_ALL_PROMPT },
         {
           role: "user",
           content:
-            `The following are normalized lines (many are table ROWS joined with " | ").\n` +
-            `Treat each line independently and extract ALL events. If a line contains multiple items, create multiple events.\n` +
+            `The following are normalized OCR/text lines. Treat each row/line as potentially containing one or more events.\n` +
+            `Create multiple events for the same date if needed.\n` +
             `---BEGIN---\n${userContent}\n---END---`,
         },
       ],
-      temperature: 0.0,
-      max_tokens: maxTokens,
-      response_format: { type: "json_object" },
+      temperature: 0.0, // deterministic
+      max_tokens: 1200,
+      response_format: { type: "json_object" }, // strict JSON
     }),
   });
 
@@ -256,124 +260,46 @@ async function callOpenAI_JSONMode(
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
 
-  const parsed = safeJsonParse(content); // <-- always hardened
+  const parsed = safeJsonParse(content);
   return { parsed, tokensUsed };
 }
 
-async function callOpenAI_Vision_JSON(
-  model: string,
-  systemPrompt: string,
-  base64Jpeg: string,
-  maxTokens: number
-) {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: systemPrompt },
-            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Jpeg}` } },
-          ],
-        },
-      ],
-      temperature: 0.0,
-      max_tokens: maxTokens,
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || "OpenAI API request failed");
-  }
-
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content ?? "";
-  const tokensUsed = data?.usage?.total_tokens ?? 0;
-
-  const parsed = safeJsonParse(content); // <-- always hardened
-  return { parsed, tokensUsed };
-}
-
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-/* ---------- Public: route by file type ---------- */
+/* -------------------- Public API -------------------- */
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
-    const model = "gpt-4o";
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
 
     const name = (file.name || "").toLowerCase();
     const type = (file.type || "").toLowerCase();
 
-    // IMAGES: OCR → model; if empty, Vision
-    if (type.startsWith("image/")) {
-      let totalTokens = 0;
-      let events: ParsedEvent[] = [];
-
-      try {
-        const ocr = await extractFromImageOCR(file);
-        if (ocr && ocr.length >= 10) {
-          const structured = toStructuredPlainText(ocr);
-          if (estimateTokens(structured) <= MAX_CONTENT_TOKENS) {
-            const { parsed, tokensUsed } = await callOpenAI_JSONMode(
-              model, DOCUMENT_SYSTEM_PROMPT, structured, 900
-            );
-            events = (parsed.events || []) as ParsedEvent[];
-            totalTokens += tokensUsed;
-          }
-        }
-      } catch {
-        // ignore; fallback to vision next
-      }
-
-      if (events.length === 0) {
-        const b64 = await fileToBase64(file);
-        const { parsed, tokensUsed } = await callOpenAI_Vision_JSON(
-          model, DOCUMENT_SYSTEM_PROMPT, b64, 1000
-        );
-        events = (parsed.events || []) as ParsedEvent[];
-        totalTokens += tokensUsed;
-      }
-
-      events = postNormalizeEvents(events);
-      return { events: dedupeEvents(events), tokensUsed: totalTokens };
-    }
-
-    // DOCS: DOCX (HTML tables flattened), XLSX/CSV, PDF, TXT
     let raw = "";
-    if (type.includes("word") || name.endsWith(".docx")) {
-      raw = await extractFromDocx(file);
+
+    if (type.startsWith("image/")) {
+      // Pure OCR for images
+      raw = await ocrFromImageFile(file);
+    } else if (type.includes("pdf") || name.endsWith(".pdf")) {
+      // Render PDF → OCR page images
+      raw = await ocrFromPdf(file);
+    } else if (type.includes("word") || name.endsWith(".docx")) {
+      // Browser can’t “image” Word; parse text deterministically
+      raw = await extractTextFromDocx(file);
     } else if (
       type.includes("excel") ||
       name.endsWith(".xlsx") ||
       name.endsWith(".xls") ||
       name.endsWith(".csv")
     ) {
-      raw = await extractFromXlsx(file);
-    } else if (type.includes("pdf") || name.endsWith(".pdf")) {
-      raw = await extractFromPdf(file);
+      // Same for spreadsheets
+      raw = await extractTextFromXlsx(file);
     } else if (type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text();
     } else {
       throw new Error(`Unsupported file type: ${type || name}`);
     }
 
-    if (!raw?.trim()) throw new Error("No text could be extracted from the file.");
+    if (!raw?.trim()) {
+      throw new Error("No text could be extracted from the file.");
+    }
 
     const structured = toStructuredPlainText(raw);
     const estimatedTokens = estimateTokens(structured);
@@ -383,23 +309,12 @@ export class OpenAIFilesService {
       );
     }
 
-    // First pass: recall-first extraction (ALL items)
-    const { parsed: parsed1, tokensUsed: t1 } = await callOpenAI_JSONMode(
-      model, DOCUMENT_SYSTEM_PROMPT, structured, 1000
-    );
-    let events: ParsedEvent[] = (parsed1.events || []) as ParsedEvent[];
-    let totalTokens = t1;
-
-    // Fallback: aggressive scanner if empty or clearly under-counted
-    if (events.length === 0 || events.length < 5) {
-      const { parsed: parsed2, tokensUsed: t2 } = await callOpenAI_JSONMode(
-        model, FALLBACK_SYSTEM_PROMPT, structured, 1000
-      );
-      events = (events.concat(parsed2.events || [])) as ParsedEvent[];
-      totalTokens += t2;
-    }
+    const { parsed, tokensUsed } = await callOpenAI_JSONMode(structured);
+    let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[];
 
     events = postNormalizeEvents(events);
-    return { events: dedupeEvents(events), tokensUsed: totalTokens };
+    events = dedupeEvents(events);
+
+    return { events, tokensUsed };
   }
 }
