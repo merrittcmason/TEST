@@ -25,12 +25,15 @@ const MAX_LINES_PER_TEXT_BATCH = 35;
 const MAX_CHARS_PER_TEXT_BATCH = 1200;
 const MAX_PDF_PAGES = 10;
 const PDF_PAGES_PER_VISION_BATCH = 1;
-const VISION_RENDER_SCALE = 1.4;
+const VISION_RENDER_SCALE = 2.0;
 const VISION_MODEL = "gpt-4o";
 const TEXT_MODEL = "gpt-4o";
 const MAX_TOKENS_TEXT = 550;
-const MAX_TOKENS_VISION = 650;
-const BATCH_EVENT_CAP = 60;
+const MAX_TOKENS_VISION = 1200;
+const BATCH_EVENT_CAP = 120;
+const IMAGE_TILES_PER_BATCH = 6;
+const TILE_GRID = 3;
+const TILE_OVERLAP = 0.12;
 
 type AIDebugInfo = {
   mode: "text" | "vision";
@@ -101,8 +104,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
 }
 
 function positionToLineCol(s: string, pos: number) {
-  let line = 1,
-    col = 1;
+  let line = 1, col = 1;
   for (let i = 0; i < pos && i < s.length; i++) {
     if (s[i] === "\n") {
       line++;
@@ -199,6 +201,71 @@ async function fileToDataURL(file: File): Promise<string> {
   });
 }
 
+function enhanceToBW(dataUrl: string, contrast = 1.35, brightness = 1.05): string {
+  return (() => {
+    const img = new Image();
+    img.src = dataUrl;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    const w = img.width;
+    const h = img.height;
+    if (!w || !h) return dataUrl;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.filter = `contrast(${contrast}) brightness(${brightness})`;
+    ctx.drawImage(img, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      sum += y;
+    }
+    const avg = sum / (d.length / 4);
+    const thresh = Math.min(255, Math.max(0, avg * 0.95));
+    for (let i = 0; i < d.length; i += 4) {
+      const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      const v = y > thresh ? 255 : 0;
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.95);
+  })();
+}
+
+function enhanceAndTile(dataUrl: string, grid = TILE_GRID, overlapPct = TILE_OVERLAP): string[] {
+  const bw = enhanceToBW(dataUrl);
+  const base = new Image();
+  base.src = bw;
+  const W = base.width || 0;
+  const H = base.height || 0;
+  if (!W || !H) return [bw];
+  const tiles: string[] = [];
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+  const stepX = Math.floor(W / grid);
+  const stepY = Math.floor(H / grid);
+  const overlapX = Math.floor(stepX * overlapPct);
+  const overlapY = Math.floor(stepY * overlapPct);
+  for (let gy = 0; gy < grid; gy++) {
+    for (let gx = 0; gx < grid; gx++) {
+      const x0 = Math.max(0, gx * stepX - overlapX);
+      const y0 = Math.max(0, gy * stepY - overlapY);
+      const x1 = Math.min(W, (gx + 1) * stepX + overlapX);
+      const y1 = Math.min(H, (gy + 1) * stepY + overlapY);
+      const w = Math.max(1, x1 - x0);
+      const h = Math.max(1, y1 - y0);
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(base, x0, y0, w, h, 0, 0, w, h);
+      tiles.push(canvas.toDataURL("image/jpeg", 0.95));
+    }
+  }
+  return tiles;
+}
+
 async function renderPdfToImages(
   file: File,
   maxPages = MAX_PDF_PAGES,
@@ -216,7 +283,9 @@ async function renderPdfToImages(
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
     await page.render({ canvasContext: ctx as any, viewport }).promise;
-    urls.push(canvas.toDataURL("image/jpeg", 0.92));
+    const raw = canvas.toDataURL("image/jpeg", 0.95);
+    const bw = enhanceToBW(raw);
+    urls.push(bw);
   }
   return urls;
 }
@@ -515,26 +584,38 @@ export class OpenAIFilesService {
     const type = (file.type || "").toLowerCase();
 
     if (type.startsWith("image/")) {
-      const url = await fileToDataURL(file);
-      const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch([url], 0, 1);
-      let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[];
-      events = postNormalizeEvents(events);
-      events = dedupeEvents(events);
-      return { events, tokensUsed };
+      const base = await fileToDataURL(file);
+      const tiles = enhanceAndTile(base, TILE_GRID, TILE_OVERLAP);
+      const batches = chunkArray(tiles, IMAGE_TILES_PER_BATCH);
+      let tokens = 0;
+      let allEvents: ParsedEvent[] = [];
+      for (let i = 0; i < batches.length; i++) {
+        const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(batches[i], i, batches.length);
+        tokens += tokensUsed;
+        const evs = (parsed.events || []) as ParsedEvent[];
+        allEvents.push(...evs.slice(0, BATCH_EVENT_CAP));
+      }
+      allEvents = postNormalizeEvents(allEvents);
+      allEvents = dedupeEvents(allEvents);
+      return { events: allEvents, tokensUsed: tokens };
     }
 
     if (type.includes("pdf") || name.endsWith(".pdf")) {
-      const urls = await renderPdfToImages(file, MAX_PDF_PAGES, VISION_RENDER_SCALE);
-      if (!urls.length) throw new Error("Could not render any PDF pages.");
-      const pageBatches = chunkArray(urls, PDF_PAGES_PER_VISION_BATCH);
+      const pageImages = await renderPdfToImages(file, MAX_PDF_PAGES, VISION_RENDER_SCALE);
+      if (!pageImages.length) throw new Error("Could not render any PDF pages.");
+      const allTiles: string[] = [];
+      for (const p of pageImages) {
+        const tiles = enhanceAndTile(p, TILE_GRID, TILE_OVERLAP);
+        allTiles.push(...tiles);
+      }
+      const batches = chunkArray(allTiles, IMAGE_TILES_PER_BATCH);
       let tokens = 0;
       let allEvents: ParsedEvent[] = [];
-      for (let i = 0; i < pageBatches.length; i++) {
-        const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(pageBatches[i], i, pageBatches.length);
+      for (let i = 0; i < batches.length; i++) {
+        const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(batches[i], i, batches.length);
         tokens += tokensUsed;
         const evs = (parsed.events || []) as ParsedEvent[];
-        const evsCapped = evs.slice(0, BATCH_EVENT_CAP);
-        allEvents.push(...evsCapped);
+        allEvents.push(...evs.slice(0, BATCH_EVENT_CAP));
       }
       allEvents = postNormalizeEvents(allEvents);
       allEvents = dedupeEvents(allEvents);
@@ -576,8 +657,7 @@ export class OpenAIFilesService {
       const { parsed, tokensUsed } = await callOpenAI_JSON_TextBatch(batches[i], i, batches.length);
       tokens += tokensUsed;
       const evs = (parsed.events || []) as ParsedEvent[];
-      const evsCapped = evs.slice(0, BATCH_EVENT_CAP);
-      allEvents.push(...evsCapped);
+      allEvents.push(...evs.slice(0, BATCH_EVENT_CAP));
     }
 
     allEvents = postNormalizeEvents(allEvents);
