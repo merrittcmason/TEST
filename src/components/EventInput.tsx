@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { OpenAIService, type ParsedEvent } from '../services/openai';
+import { OpenAITextService } from '../services/openaiText';
+import { OpenAIFilesService } from '../services/openaiFiles';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase'; // for RPC call
