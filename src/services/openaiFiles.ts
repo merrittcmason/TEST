@@ -38,7 +38,7 @@ function safeJsonParse(content: string): any {
 }
 
 /* ---------- naming rules shared with textbox ---------- */
-const DOCUMENT_SYSTEM_PROMPT = `You are a calendar event parser. Extract events from the provided text and return ONLY valid JSON.
+const DOCUMENT_SYSTEM_PROMPT = `You are a calendar event parser. Extract all events from the provided document and return ONLY valid JSON.
 
 Current date for reference: ${new Date().toISOString().split('T')[0]}
 
