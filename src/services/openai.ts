@@ -1,6 +1,7 @@
 import mammoth from "mammoth";        // DOCX → text
 import * as XLSX from "xlsx";         // Excel → JSON/text
 import * as pdfjsLib from "pdfjs-dist"; // PDF → text
+import Tesseract from "tesseract.js"; // Local OCR for images
 
 export interface ParsedEvent {
   event_name: string;
@@ -70,6 +71,11 @@ async function parsePdf(file: File): Promise<string> {
   return text;
 }
 
+async function parseImageWithOCR(file: File): Promise<string> {
+  const result = await Tesseract.recognize(file, "eng");
+  return result.data.text;
+}
+
 export class OpenAIService {
   /** ---- Natural Language (text input) ---- */
   static async parseNaturalLanguage(text: string): Promise<ParseResult> {
@@ -132,8 +138,7 @@ Rules:
     } else if (mime.startsWith("text/") || file.name.endsWith(".txt")) {
       text = await file.text();
     } else if (mime.startsWith("image/")) {
-      const base64 = await this.fileToBase64(file);
-      return this.parseImage(base64);
+      text = await parseImageWithOCR(file); // ✅ Local OCR
     } else {
       throw new Error(`Unsupported file type: ${mime}`);
     }
@@ -146,58 +151,6 @@ Rules:
     }
 
     return this.parseDocument(text);
-  }
-
-  private static async fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () =>
-        resolve((reader.result as string).split(",")[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  /** ---- Image OCR ---- */
-  private static async parseImage(base64Image: string): Promise<ParseResult> {
-    const systemPrompt = `You are a calendar event parser. Extract events from this image and return them as JSON.`;
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: systemPrompt },
-              {
-                type: "image_url",
-                image_url: { url: `data:image/jpeg;base64,${base64Image}` },
-              },
-            ],
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 1000,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || "OpenAI API request failed");
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    const tokensUsed = data.usage?.total_tokens || 0;
-
-    const parsed = safeJsonParse(content);
-    return { events: parsed.events || [], tokensUsed };
   }
 
   /** ---- Document (plain text from parsers) ---- */
