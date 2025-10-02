@@ -7,11 +7,20 @@ type TokenUsage = Database['public']['Tables']['token_usage']['Row'];
 type UploadQuota = Database['public']['Tables']['upload_quotas']['Row'];
 type Subscription = Database['public']['Tables']['subscriptions']['Row'];
 
+async function getCurrentUserId(): Promise<string> {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  if (!user) throw new Error('Not authenticated');
+  return user.id;
+}
+
 export class DatabaseService {
+  /** -------------------- USERS -------------------- */
+
   static async getUser(userId: string): Promise<User | null> {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('*') // includes plan_type per your schema
       .eq('id', userId)
       .maybeSingle();
 
@@ -19,19 +28,17 @@ export class DatabaseService {
     return data;
   }
 
+  /**
+   * Don’t call this from the client anymore.
+   * Your DB trigger (on auth.users insert) should create the profile with plan_type='free'.
+   * Leaving this here to avoid compile errors if referenced, but it throws to prevent misuse.
+   */
   static async createUser(
-    userId: string,
-    email: string,
-    name?: string
+    _userId: string,
+    _email: string,
+    _name?: string
   ): Promise<User> {
-    const { data, error } = await supabase
-      .from('users')
-      .insert({ id: userId, email, name })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    throw new Error('createUser is disabled: profiles are created by DB trigger on signup');
   }
 
   static async updateUser(
@@ -40,7 +47,7 @@ export class DatabaseService {
   ): Promise<User> {
     const { data, error } = await supabase
       .from('users')
-      .update(updates)
+      .update(updates) // e.g., updating name; plan_type should normally be changed via a controlled RPC
       .eq('id', userId)
       .select()
       .single();
@@ -48,6 +55,8 @@ export class DatabaseService {
     if (error) throw error;
     return data;
   }
+
+  /** -------------------- EVENTS -------------------- */
 
   static async getEvents(
     userId: string,
@@ -61,24 +70,31 @@ export class DatabaseService {
       .order('date', { ascending: true })
       .order('time', { ascending: true, nullsFirst: false });
 
-    if (startDate) {
-      query = query.gte('date', startDate);
-    }
-    if (endDate) {
-      query = query.lte('date', endDate);
-    }
+    if (startDate) query = query.gte('date', startDate);
+    if (endDate)   query = query.lte('date', endDate);
 
     const { data, error } = await query;
     if (error) throw error;
     return data || [];
   }
 
+  /**
+   * Ensures user_id is set to the current auth user to satisfy RLS:
+   *   WITH CHECK (user_id = auth.uid())
+   */
   static async createEvent(
     event: Database['public']['Tables']['events']['Insert']
   ): Promise<Event> {
+    let payload = { ...event } as Database['public']['Tables']['events']['Insert'];
+
+    if (!payload.user_id) {
+      const uid = await getCurrentUserId();
+      payload.user_id = uid;
+    }
+
     const { data, error } = await supabase
       .from('events')
-      .insert(event)
+      .insert(payload)
       .select()
       .single();
 
@@ -86,16 +102,25 @@ export class DatabaseService {
     return data;
   }
 
+  /**
+   * Bulk create; injects user_id for any items missing it.
+   */
   static async createEvents(
     events: Database['public']['Tables']['events']['Insert'][]
   ): Promise<Event[]> {
+    const uid = await getCurrentUserId();
+    const payload = events.map(e => ({
+      ...e,
+      user_id: e.user_id ?? uid,
+    })) as Database['public']['Tables']['events']['Insert'][];
+
     const { data, error } = await supabase
       .from('events')
-      .insert(events)
+      .insert(payload)
       .select();
 
     if (error) throw error;
-    return data;
+    return data as Event[];
   }
 
   static async updateEvent(
@@ -121,6 +146,10 @@ export class DatabaseService {
 
     if (error) throw error;
   }
+
+  /** -------------------- TOKEN USAGE --------------------
+   * NOTE: If you tighten RLS (recommended), writes should be done from your backend using the service role.
+   */
 
   static async getTokenUsage(userId: string, month: string): Promise<TokenUsage | null> {
     const { data, error } = await supabase
@@ -152,7 +181,7 @@ export class DatabaseService {
         .single();
 
       if (error) throw error;
-      return data;
+      return data as TokenUsage;
     } else {
       const { data, error } = await supabase
         .from('token_usage')
@@ -161,9 +190,13 @@ export class DatabaseService {
         .single();
 
       if (error) throw error;
-      return data;
+      return data as TokenUsage;
     }
   }
+
+  /** -------------------- UPLOAD QUOTAS --------------------
+   * NOTE: Same service-role caveat as above if you harden RLS.
+   */
 
   static async getUploadQuota(userId: string, month: string): Promise<UploadQuota | null> {
     const { data, error } = await supabase
@@ -195,7 +228,7 @@ export class DatabaseService {
         .single();
 
       if (error) throw error;
-      return data;
+      return data as UploadQuota;
     } else {
       const { data, error } = await supabase
         .from('upload_quotas')
@@ -204,9 +237,14 @@ export class DatabaseService {
         .single();
 
       if (error) throw error;
-      return data;
+      return data as UploadQuota;
     }
   }
+
+  /** -------------------- SUBSCRIPTIONS --------------------
+   * Strongly recommended: perform create/update from your backend with the service role,
+   * since user-side writes should be restricted.
+   */
 
   static async getActiveSubscription(userId: string): Promise<Subscription | null> {
     const { data, error } = await supabase
@@ -230,7 +268,7 @@ export class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as Subscription;
   }
 
   static async updateSubscription(
@@ -245,6 +283,6 @@ export class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as Subscription;
   }
 }
