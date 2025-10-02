@@ -1,22 +1,17 @@
 // src/services/openaiEducation.ts
-
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
-import * as pdfjsLib from "pdfjs-dist";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
-
-/* =========================
-   Shared Types / Constants
-   ========================= */
 
 export interface ParsedEvent {
   event_name: string;
   event_date: string;
   event_time: string | null;
   event_tag: string | null;
+  event_label?: string | null;
 }
 
 export interface ParseResult {
@@ -36,10 +31,6 @@ const TEXT_MODEL = "gpt-4o";
 const MAX_TOKENS_TEXT = 550;
 const MAX_TOKENS_VISION = 650;
 const BATCH_EVENT_CAP = 60;
-
-/* =========================
-   Debug Helpers (Files flow)
-   ========================= */
 
 type AIDebugInfo = {
   mode: "text" | "vision";
@@ -66,10 +57,6 @@ if (typeof window !== "undefined" && !(window as any).__AI_DEBUG__) {
   (window as any).__AI_DEBUG__ = () => lastAIBatches;
 }
 
-/* =========================
-   Utilities (Files flow)
-   ========================= */
-
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4);
 }
@@ -95,6 +82,7 @@ function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
       event_date: e.event_date,
       event_time,
       event_tag: e.event_tag ?? null,
+      event_label: e.event_label ?? null,
     };
   });
 }
@@ -103,7 +91,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>();
   const out: ParsedEvent[] = [];
   for (const e of events) {
-    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}`;
+    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}|${e.event_label ?? ""}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(e);
@@ -131,16 +119,9 @@ function excerptAround(s: string, pos: number, radius = 120) {
   return `${snippet}\n${caret}`;
 }
 
-/* =========================
-   Prompts (Education-specific only)
-   ========================= */
-
 const TEXT_SYSTEM_PROMPT = `You are an event extractor for student schedules and syllabi.
-
-Input is normalized text lines (some are flattened table rows joined with " | ").
-
-Extract ONLY dated academic items with concise names.
-
+Input is normalized text lines (including flattened CSV-like table rows joined with " | ").
+Extract ONLY dated academic items with concise names. Be exhaustive: for each tabular row that contains a due/date field, create one event.
 Ignore in names: section/room codes, locations, instructor names/emails, URLs.
 
 Schema ONLY:
@@ -150,28 +131,28 @@ Schema ONLY:
       "event_name": "Title-Case Short Name",
       "event_date": "YYYY-MM-DD",
       "event_time": "HH:MM" | null,
-      "event_tag": "assignment|homework|reading|quiz|exam|midterm|final|project|lab|lecture|class|presentation|workshop|office_hours|deadline|other" | null
+      "event_tag": "assignment|homework|reading|quiz|exam|midterm|final|project|lab|lecture|class|presentation|workshop|office_hours|deadline|other" | null,
+      "event_label": string | null
     }
   ]
 }
 
 Rules:
 - Title-Case, professional, ≤ 40 chars; no dates/times/pronouns/descriptions in event_name.
-- Preserve meaningful identifiers like "HW 3", "Lab 2", "Ch. 5.1–5.2".
+- Preserve identifiers like "HW 3", "Lab 2", "Ch. 5.1–5.2".
 - Use current year if missing (${new Date().getFullYear()}).
 - Accept dates like YYYY-MM-DD, MM/DD, M/D, "Oct 5", "October 5".
-- Times: "12 pm"→"12:00", "12–1 pm" use start time "12:00".
-- If the text implies due/submit/turn-in/deadline and no time is present, set "23:59".
-- If no time is present and not a due/deadline context, event_time = null.
+- Times: "12 pm"→"12:00"; ranges use start time.
+- If due/submit/turn-in/deadline and no time is present, set "23:59"; otherwise if no time, event_time = null.
 - If a line lists multiple distinct items for the same date, create multiple events.
+- event_label: if a course/subject/number/name column is present (e.g., "Course", "Class", "Subject", "NURS 210"), use that value; otherwise infer a short course code/name from the row; if none, null.
 Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
 
 const VISION_SYSTEM_PROMPT = `You are an event extractor reading academic schedules as images (use built-in OCR).
-
-Goal: OUTPUT ONLY events that have a resolvable calendar date.
+Output ONLY events that have a resolvable calendar date.
 
 Date handling:
-- Accept forms like 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
+- Accept 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
 - Normalize to YYYY-MM-DD. If year missing, use ${new Date().getFullYear()}.
 - For calendar grids/tables, read month/year from headers and carry them forward until a new header appears.
 - Associate day numbers/cells with nearby items in the same row/cell/box; otherwise look to nearest header in the same column/section.
@@ -179,8 +160,8 @@ Date handling:
 Name noise to ignore: room/building, campus names, URLs, instructor names/emails, map links.
 
 Combine vs split:
-- Single assignment referencing multiple sections (e.g., "Practice — 5.1 & 5.2") → ONE event preserving "5.1 & 5.2".
-- Clearly different tasks ("HW 3 due; Quiz 2") → split into separate events.
+- "Practice — 5.1 & 5.2" → one event preserving "5.1 & 5.2".
+- "HW 3 due; Quiz 2" → split into separate events.
 
 Schema ONLY:
 {
@@ -189,7 +170,8 @@ Schema ONLY:
       "event_name": "Title-Case Short Name",
       "event_date": "YYYY-MM-DD",
       "event_time": "HH:MM" | null,
-      "event_tag": "assignment|homework|reading|quiz|exam|midterm|final|project|lab|lecture|class|presentation|workshop|office_hours|deadline|other" | null
+      "event_tag": "assignment|homework|reading|quiz|exam|midterm|final|project|lab|lecture|class|presentation|workshop|office_hours|deadline|other" | null,
+      "event_label": string | null
     }
   ]
 }
@@ -198,17 +180,15 @@ Time rules:
 - "noon"→"12:00", "midnight"→"00:00", ranges use start time.
 - If due/submit/turn-in/deadline and no time is shown → "23:59"; else if no time → null.
 
-CRITICAL: Every event MUST include a valid event_date. If the date cannot be resolved with high confidence, skip the item.
+Label rule:
+- Derive event_label from visible course/subject/number/name near the item (e.g., "BIO 201", "NURSING Pharmacology"); if none, leave null.
 
+CRITICAL: Every event MUST include a valid event_date. If the date cannot be resolved with high confidence, skip the item.
 Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
 
 const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
-{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
+{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null, "event_label": "..."|null } ] }
 Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`;
-
-/* =========================
-   File Helpers (Files flow)
-   ========================= */
 
 async function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -226,12 +206,10 @@ async function renderPdfToImages(
 ): Promise<string[]> {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await getDocument({ data }).promise;
-
   const urls: string[] = [];
   const pages = Math.min(pdf.numPages, maxPages);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-
   for (let i = 1; i <= pages; i++) {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale });
@@ -266,19 +244,26 @@ async function extractTextFromDocx(file: File): Promise<string> {
   return lines.join("\n");
 }
 
-async function extractTextFromXlsx(file: File): Promise<string> {
-  const data = await file.arrayBuffer();
-  const wb = XLSX.read(data, { type: "array" });
-  const parts: string[] = [];
-  for (const name of wb.SheetNames) {
-    const sheet = wb.Sheets[name];
-    const csv = XLSX.utils.sheet_to_csv(sheet);
-    if (csv && csv.trim()) {
+function extractTextFromXlsxSmart(file: File): Promise<string> {
+  return new Promise(async (resolve) => {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: "array" });
+    const parts: string[] = [];
+    for (const name of wb.SheetNames) {
+      const sheet = wb.Sheets[name];
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      if (!rows.length) continue;
       parts.push(`[Sheet: ${name}]`);
-      parts.push(csv.trim());
+      const headers = Object.keys(rows[0] || {}).map((h) => String(h));
+      parts.push(`HEADERS | ${headers.join(" | ")}`);
+      for (const row of rows) {
+        const values = headers.map((h) => String(row[h] ?? "").trim());
+        const line = values.join(" | ");
+        if (line.replace(/\|/g, "").trim()) parts.push(line);
+      }
     }
-  }
-  return parts.join("\n").trim();
+    resolve(parts.join("\n").trim());
+  });
 }
 
 function denoiseLine(line: string): string {
@@ -361,10 +346,6 @@ async function repairMalformedJSON(bad: string): Promise<{ parsed: any; tokensUs
   }
 }
 
-/* =========================
-   OpenAI Calls (Files flow)
-   ========================= */
-
 async function callOpenAI_JSON_TextBatch(
   batchText: string,
   batchIndex: number,
@@ -392,8 +373,8 @@ async function callOpenAI_JSON_TextBatch(
         {
           role: "user",
           content:
-            `Batch ${batchIndex + 1}/${totalBatches}. Academic mode: normalize & ignore noise (weekday letters, rooms, sections, URLs, instructor names).\n` +
-            `Extract ONLY dates + academic items (assignments, labs, quizzes, exams, readings). Multiple items per date allowed.\n` +
+            `Batch ${batchIndex + 1}/${totalBatches}. Academic mode: for CSV-like rows, create one event per row that contains a due/date field. Normalize and ignore noise (rooms, sections, URLs, instructor names).\n` +
+            `Extract dates, names, tags, and label (course/subject). Multiple items per date allowed.\n` +
             `---BEGIN---\n${batchText}\n---END---`,
         },
       ],
@@ -458,8 +439,7 @@ async function callOpenAI_JSON_VisionBatch(
     {
       type: "text",
       text:
-        "Academic mode: Extract events WITH DATES from these schedule images. Every event MUST have event_date in YYYY-MM-DD. " +
-        "Resolve dates via headers/columns/cells; if still unknown, omit. Normalize US-style dates and carry forward month/year from headings. Preserve identifiers like 'HW 3', 'Lab 2', 'Ch. 5.1–5.2' in event_name.",
+        "Academic mode: Extract events WITH DATES. Resolve dates via headers/columns/cells; normalize; derive event_label from course/subject nearby; preserve identifiers in event_name.",
     },
   ];
   for (const url of imageDataUrls) userContent.push({ type: "image_url", image_url: { url } });
@@ -527,10 +507,6 @@ async function callOpenAI_JSON_VisionBatch(
   }
 }
 
-/* =========================
-   Public Services (Files flow)
-   ========================= */
-
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
@@ -574,7 +550,7 @@ export class OpenAIFilesService {
       name.endsWith(".xls") ||
       name.endsWith(".csv")
     ) {
-      raw = await extractTextFromXlsx(file);
+      raw = await extractTextFromXlsxSmart(file);
     } else if (type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text();
     } else {
@@ -610,21 +586,20 @@ export class OpenAIFilesService {
   }
 }
 
-/* =========================
-   Text Input Service (Education-specific)
-   ========================= */
-
 const TEXTBOX_SYSTEM_PROMPT = `You are a student-focused calendar parser. Extract academic events from natural language and return JSON.
 
 Current date for reference: ${new Date().toISOString().split('T')[0]}
 
-Naming & Formatting (critical):
+Naming & Formatting:
 - SHORT, professional Title-Case "event_name" (≤ 50 chars).
 - Prefer concise academic patterns: "CS 201 Homework 3", "Biology Lab 2", "Math Quiz 1", "Physics Midterm", "Reading Ch. 5".
 - No dates/times/pronouns in event_name; no room/instructor/URLs.
 
 Tag guidance:
 - Use one of: assignment, homework, reading, quiz, exam, midterm, final, project, lab, lecture, class, presentation, workshop, office_hours, deadline, other. If unclear → null.
+
+Label guidance:
+- event_label should be the course number or course name if present or inferable (e.g., "NURS 210", "Pathophysiology"). If none, null.
 
 Other Rules:
 - If year missing, use current year (${new Date().getFullYear()}).
@@ -640,16 +615,15 @@ Return ONLY valid JSON in this shape:
       "event_name": "CS 201 Homework 3",
       "event_date": "2025-10-05",
       "event_time": "23:59",
-      "event_tag": "homework"
+      "event_tag": "homework",
+      "event_label": "CS 201"
     }
   ]
 }`;
 
 export class OpenAITextService {
-  /** ORIGINAL flow preserved. */
   static async parseNaturalLanguage(text: string): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error('OpenAI API key not configured');
-
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -666,17 +640,13 @@ export class OpenAITextService {
         max_tokens: 500,
       }),
     });
-
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error?.error?.message || 'OpenAI API request failed');
     }
-
     const data = await response.json();
     const content = data.choices[0].message.content;
     const tokensUsed = data.usage?.total_tokens || 0;
-
-    // Lenient parsing preserved
     let parsed: any;
     try {
       parsed = JSON.parse(content);
@@ -688,7 +658,6 @@ export class OpenAITextService {
         throw new Error('Failed to parse AI response as JSON');
       }
     }
-
     return {
       events: parsed.events || [],
       tokensUsed,
