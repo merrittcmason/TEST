@@ -28,11 +28,9 @@ const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
 export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard' }: EventInputProps) {
   const { user } = useAuth();
   const [textInput, setTextInput] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPopup, setShowPopup] = useState(false);
-  const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
   const [hasDrafts, setHasDrafts] = useState(false);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -107,9 +105,14 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
     }
   };
 
-  const handleFileSubmit = async () => {
-    if (!selectedFile) {
+  const handleSelectedFile = async (file: File | undefined | null) => {
+    if (!file) {
       setError('Please select a file');
+      return;
+    }
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setError('File size must be less than 10MB');
       return;
     }
     setError('');
@@ -117,44 +120,18 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
     try {
       await checkQuotas(true);
       const { OpenAIFilesService } = await getServices();
-      const result = await OpenAIFilesService.parseFile(selectedFile);
+      const result = await OpenAIFilesService.parseFile(file);
       if (result.events.length === 0) {
         setError('No events found in the file.');
         setLoading(false);
         return;
       }
       onEventsExtracted(result.events);
-      setSelectedFile(null);
       await refreshDraftsFlag();
     } catch (err: any) {
       setError(err.message || 'Failed to process file');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const maxSize = 10 * 1024 * 1024;
-      if (file.size > maxSize) {
-        setError('File size must be less than 10MB');
-        return;
-      }
-      setSelectedFile(file);
-      setError('');
-      setShowPopup(false);
-      handleFileSubmit();
-    }
-  };
-
-  const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
-    setCaptureMode(option);
-    setShowPopup(false);
-    if (option === 'document' || option === 'picture') {
-      document.getElementById('file-input-hidden')?.click();
-    } else if (option === 'camera') {
-      document.getElementById('camera-input-hidden')?.click();
     }
   };
 
@@ -249,19 +226,37 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
         </button>
         {showPopup && (
           <div className="input-popup">
-            <button className="popup-option" onClick={() => handlePopupOption('document')}>
+            <button
+              className="popup-option"
+              onClick={() => {
+                setShowPopup(false);
+                document.getElementById('file-doc-input')?.click();
+              }}
+            >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Upload Document
             </button>
-            <button className="popup-option" onClick={() => handlePopupOption('picture')}>
+            <button
+              className="popup-option"
+              onClick={() => {
+                setShowPopup(false);
+                document.getElementById('file-image-input')?.click();
+              }}
+            >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               Upload Picture
             </button>
-            <button className="popup-option" onClick={() => handlePopupOption('camera')}>
+            <button
+              className="popup-option"
+              onClick={() => {
+                setShowPopup(false);
+                document.getElementById('camera-input-hidden')?.click();
+              }}
+            >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -271,11 +266,20 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
           </div>
         )}
       </div>
+
       <input
         type="file"
-        id="file-input-hidden"
-        accept={captureMode === 'document' ? '.pdf,.txt,.doc,.docx,.xlsx,.xls,.csv' : 'image/*'}
-        onChange={handleFileChange}
+        id="file-doc-input"
+        accept=".pdf,.txt,.doc,.docx,.xlsx,.xls,.csv"
+        onChange={(e) => handleSelectedFile(e.target.files?.[0])}
+        className="file-input-hidden"
+        style={{ display: 'none' }}
+      />
+      <input
+        type="file"
+        id="file-image-input"
+        accept="image/*"
+        onChange={(e) => handleSelectedFile(e.target.files?.[0])}
         className="file-input-hidden"
         style={{ display: 'none' }}
       />
@@ -284,10 +288,11 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
         id="camera-input-hidden"
         accept="image/*"
         capture="environment"
-        onChange={handleFileChange}
+        onChange={(e) => handleSelectedFile(e.target.files?.[0])}
         className="file-input-hidden"
         style={{ display: 'none' }}
       />
+
       {error && <div className="input-error">{error}</div>}
     </div>
   );
