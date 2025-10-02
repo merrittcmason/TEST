@@ -44,6 +44,20 @@ function chunkText(text: string, maxTokens: number = MAX_CONTENT_TOKENS): string
   return chunks;
 }
 
+function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
+  const seen = new Set<string>();
+  const unique: ParsedEvent[] = [];
+
+  for (const ev of events) {
+    const key = `${ev.event_name.toLowerCase()}|${ev.event_date}|${ev.event_time ?? ""}|${ev.event_tag ?? ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(ev);
+    }
+  }
+  return unique;
+}
+
 // ---------------- File Extraction ----------------
 async function extractTextFromFile(file: File): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
@@ -90,22 +104,15 @@ export class OpenAIService {
 
     const systemPrompt = `You are a calendar event parser. Extract events from natural language and return them as a JSON array.
 
-Current date for reference: ${new Date().toISOString().split("T")[0]}
+Current date: ${new Date().toISOString().split("T")[0]}
 
 Rules:
-- If year is missing, use current year (${new Date().getFullYear()})
-- If time is missing, set event_time to null (all-day)
-- Dates: YYYY-MM-DD
-- Times: HH:MM (24-hour)
-- Tags: short if mentioned (e.g., "work", "school"), else null
-- If no events, return empty array
-
-Return ONLY valid JSON:
-{
-  "events": [
-    { "event_name": "Meeting", "event_date": "2025-10-03", "event_time": "08:30", "event_tag": "work" }
-  ]
-}`;
+- If year missing, assume ${new Date().getFullYear()}
+- If time missing, set event_time = null
+- Date format: YYYY-MM-DD
+- Time format: HH:MM (24h)
+- Tags short/simple if mentioned
+- If no events, return empty array`;
 
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -164,7 +171,9 @@ Return ONLY valid JSON:
       totalTokens += result.tokensUsed;
     }
 
-    return { events: allEvents, tokensUsed: totalTokens };
+    const deduped = dedupeEvents(allEvents);
+
+    return { events: deduped, tokensUsed: totalTokens };
   }
 
   private static async parseDocument(text: string): Promise<ParseResult> {
@@ -174,19 +183,12 @@ Current date: ${new Date().toISOString().split("T")[0]}
 
 Rules:
 - Extract all events/schedules
-- If year is missing, use current year (${new Date().getFullYear()})
-- If time is missing, set event_time to null
+- If year missing, assume ${new Date().getFullYear()}
+- If time missing, set event_time = null
 - Dates: YYYY-MM-DD
 - Times: HH:MM (24-hour)
 - Tags: short category if mentioned, else null
-- If no events, return empty array
-
-Return ONLY valid JSON:
-{
-  "events": [
-    { "event_name": "Exam", "event_date": "2025-10-10", "event_time": null, "event_tag": "school" }
-  ]
-}`;
+- If no events, return empty array`;
 
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
