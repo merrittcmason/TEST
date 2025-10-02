@@ -1,4 +1,3 @@
-/* ===== Container: no card, no chrome ===== */
 .event-input {
   background: none;
   border: 0;
@@ -8,7 +7,6 @@
   width: 100%;
 }
 
-/* ===== The pill ===== */
 .pill-input-container {
   position: relative;
   display: flex;
@@ -16,7 +14,6 @@
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 999px;
-  /* pad left/right to clear the in-pill buttons */
   padding: 4px 56px 4px 56px;
   transition: all 0.2s ease;
 }
@@ -26,7 +23,6 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* ===== Text input inside the pill ===== */
 .pill-input {
   flex: 1;
   border: none;
@@ -34,7 +30,7 @@
   outline: none;
   font-size: 1rem;
   color: var(--text-primary);
-  padding: 12px 0; /* vertical only; horizontal handled by container padding */
+  padding: 12px 0;
   min-width: 0;
 }
 
@@ -42,7 +38,6 @@
   color: var(--text-secondary);
 }
 
-/* ===== Icon buttons INSIDE the pill (plus on left, arrow on right) ===== */
 .pill-plus-btn,
 .pill-submit-btn {
   position: absolute;
@@ -76,11 +71,10 @@
   cursor: not-allowed;
 }
 
-/* ===== File upload popup anchored to the pill ===== */
 .input-popup {
   position: absolute;
-  top: calc(100% + 8px);
-  left: 8px;                 /* near the plus */
+  bottom: calc(100% + 8px);
+  left: 8px;
   margin: 0;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -121,7 +115,6 @@
   color: var(--primary);
 }
 
-/* ===== Small spinner for the arrow spot ===== */
 .loading-spinner-small {
   width: 20px;
   height: 20px;
@@ -131,7 +124,6 @@
   animation: spin 0.6s linear infinite;
 }
 
-/* ===== Error ===== */
 .input-error {
   padding: 12px;
   background-color: var(--error-bg);
@@ -141,16 +133,15 @@
   margin-top: 12px;
 }
 
-/* ===== Animations ===== */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ===== Responsive tweaks ===== */
 @media (max-width: 768px) {
   .pill-plus-btn,
   .pill-submit-btn {
@@ -158,9 +149,9 @@
     height: 36px;
   }
   .pill-input-container {
-    padding: 4px 50px 4px 50px; /* slightly tighter on mobile */
+    padding: 4px 50px 4px 50px;
   }
   .input-popup {
-    left: 0; /* anchor flush to left on small screens */
+    left: 0;
   }
 }
