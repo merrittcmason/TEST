@@ -1,9 +1,11 @@
 .calendar-view {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
   padding: 24px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .calendar-header {
@@ -59,9 +61,16 @@
   transition: all 0.2s ease;
 }
 
-.view-btn.active {
-  background-color: var(--accent-primary);
-  color: white;
+:root[data-theme='dark'] .view-btn.active {
+  background: var(--gradient-primary);
+  color: var(--bg-primary);
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.15);
+}
+
+:root[data-theme='light'] .view-btn.active {
+  background: var(--gradient-primary);
+  color: var(--bg-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .calendar-weekdays {
@@ -135,21 +144,40 @@
   margin-top: 4px;
 }
 
-.day-event {
+:root[data-theme='dark'] .day-event {
   font-size: 0.75rem;
   padding: 2px 6px;
-  background-color: var(--accent-primary);
-  color: white;
+  background: var(--gradient-primary);
+  color: var(--bg-primary);
   border-radius: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(255, 255, 255, 0.1);
 }
 
-.day-event:hover {
-  background-color: var(--accent-hover);
-  transform: scale(1.02);
+:root[data-theme='dark'] .day-event:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(255, 255, 255, 0.2);
+}
+
+:root[data-theme='light'] .day-event {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  background: var(--gradient-primary);
+  color: var(--bg-primary);
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme='light'] .day-event:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .day-event-more {

@@ -27,12 +27,6 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.6);
-
-  --gradient-primary: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
-  --gradient-secondary: linear-gradient(135deg, #1a1a1a 0%, #000000 100%);
-  --gradient-subtle: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
-  --glass-bg: rgba(17, 17, 17, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme='light'] {
@@ -64,12 +58,6 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.2);
-
-  --gradient-primary: linear-gradient(135deg, #000000 0%, #333333 100%);
-  --gradient-secondary: linear-gradient(135deg, #f5f5f5 0%, #ffffff 100%);
-  --gradient-subtle: linear-gradient(180deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0) 100%);
-  --glass-bg: rgba(245, 245, 245, 0.7);
-  --glass-border: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -139,7 +127,7 @@ input, textarea, select {
 
 input:focus, textarea:focus, select:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(128, 128, 128, 0.1);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
 }
 
 a {
@@ -157,69 +145,52 @@ a:hover {
   align-items: center;
   justify-content: center;
   padding: 12px 24px;
-  border-radius: 12px;
+  border-radius: 8px;
   font-weight: 500;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   min-height: 44px;
   min-width: 44px;
-  position: relative;
-  overflow: hidden;
 }
 
 :root[data-theme='dark'] .btn-primary {
-  background: var(--gradient-primary);
+  background-color: var(--accent-primary);
   color: var(--bg-primary);
-  border: none;
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
 }
 
 :root[data-theme='dark'] .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25);
-}
-
-:root[data-theme='dark'] .btn-primary:active {
-  transform: translateY(0);
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 :root[data-theme='light'] .btn-primary {
-  background: var(--gradient-primary);
+  background-color: var(--accent-primary);
   color: var(--bg-primary);
-  border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 :root[data-theme='light'] .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-}
-
-:root[data-theme='light'] .btn-primary:active {
-  transform: translateY(0);
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-secondary {
-  background: var(--glass-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover {
   background-color: var(--bg-hover);
-  transform: translateY(-1px);
 }
 
 .btn-danger {
-  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  background-color: var(--error);
   color: white;
-  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
 }
 
 .btn-danger:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
+  background-color: #d32f2f;
 }
 
 .btn:disabled {
@@ -229,31 +200,11 @@ a:hover {
 }
 
 .card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
   padding: 24px;
-  box-shadow: var(--shadow-md);
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s ease;
-}
-
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--gradient-subtle);
-}
-
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-sm);
 }
 
 .container {

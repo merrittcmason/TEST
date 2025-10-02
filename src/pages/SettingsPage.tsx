@@ -14,10 +14,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
       <HamburgerMenu onNavigate={onNavigate} />
 
       <div className="settings-container">
-        <header className="settings-header">
-          <h1 className="settings-title">Settings</h1>
-        </header>
-
         <main className="settings-content">
           <section className="settings-section">
             <h2 className="section-title">Appearance</h2>

@@ -74,10 +74,6 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
       <HamburgerMenu onNavigate={onNavigate} />
 
       <div className="calendar-container">
-        <header className="calendar-page-header">
-          <h1 className="calendar-page-title">Calendar Pilot</h1>
-        </header>
-
         <main className="calendar-content">
           <CalendarView
             selectedDate={selectedDate}

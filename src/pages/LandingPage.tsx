@@ -19,10 +19,6 @@ export function LandingPage({ onNavigate, onEventClick }: LandingPageProps) {
       <HamburgerMenu onNavigate={onNavigate} />
 
       <div className="landing-container">
-        <header className="landing-header">
-          <h1 className="landing-title">Calendar Pilot</h1>
-        </header>
-
         <main className="landing-content">
           <SubscriptionCard />
           <WeekAtAGlance onEventClick={onEventClick} />

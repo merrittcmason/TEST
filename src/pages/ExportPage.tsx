@@ -79,13 +79,6 @@ export function ExportPage({ onNavigate }: ExportPageProps) {
       <HamburgerMenu onNavigate={onNavigate} />
 
       <div className="export-container">
-        <header className="export-header">
-          <h1 className="export-title">Export Calendar</h1>
-          <p className="export-subtitle">
-            Download your events in standard .ics format
-          </p>
-        </header>
-
         <main className="export-content">
           <div className="export-card">
             <div className="export-icon">
