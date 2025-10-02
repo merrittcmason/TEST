@@ -1,39 +1,24 @@
-// src/services/openaiEducation.ts
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import * as pdfjsLib from "pdfjs-dist";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
+
+
 
 export interface ParsedEvent {
   event_name: string;
   event_date: string;
   event_time: string | null;
   event_tag: string | null;
-  event_label?: string | null;
 }
 
 export interface ParseResult {
   events: ParsedEvent[];
   tokensUsed: number;
 }
-
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-const MAX_CONTENT_TOKENS = 2000;
-const MAX_LINES_PER_TEXT_BATCH = 35;
-const MAX_CHARS_PER_TEXT_BATCH = 1200;
-const MAX_PDF_PAGES = 10;
-const PDF_PAGES_PER_VISION_BATCH = 1;
-const VISION_RENDER_SCALE = 2.0;
-const VISION_MODEL = "gpt-4o";
-const TEXT_MODEL = "gpt-4o";
-const MAX_TOKENS_TEXT = 550;
-const MAX_TOKENS_VISION = 1200;
-const BATCH_EVENT_CAP = 120;
-const IMAGE_TILES_PER_BATCH = 6;
-const TILE_GRID = 3;
-const TILE_OVERLAP = 0.12;
 
 type AIDebugInfo = {
   mode: "text" | "vision";
@@ -60,6 +45,19 @@ if (typeof window !== "undefined" && !(window as any).__AI_DEBUG__) {
   (window as any).__AI_DEBUG__ = () => lastAIBatches;
 }
 
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+const MAX_CONTENT_TOKENS = 2000;
+const MAX_LINES_PER_TEXT_BATCH = 35;
+const MAX_CHARS_PER_TEXT_BATCH = 1200;
+const MAX_PDF_PAGES = 10;
+const PDF_PAGES_PER_VISION_BATCH = 1;
+const VISION_RENDER_SCALE = 1.4;
+const VISION_MODEL = "gpt-4o";
+const TEXT_MODEL = "gpt-4o";
+const MAX_TOKENS_TEXT = 550;
+const MAX_TOKENS_VISION = 650;
+const BATCH_EVENT_CAP = 60;
+
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4);
 }
@@ -85,7 +83,6 @@ function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
       event_date: e.event_date,
       event_time,
       event_tag: e.event_tag ?? null,
-      event_label: e.event_label ?? null,
     };
   });
 }
@@ -94,7 +91,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>();
   const out: ParsedEvent[] = [];
   for (const e of events) {
-    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}|${e.event_label ?? ""}`;
+    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(e);
@@ -104,7 +101,8 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
 }
 
 function positionToLineCol(s: string, pos: number) {
-  let line = 1, col = 1;
+  let line = 1,
+    col = 1;
   for (let i = 0; i < pos && i < s.length; i++) {
     if (s[i] === "\n") {
       line++;
@@ -121,49 +119,39 @@ function excerptAround(s: string, pos: number, radius = 120) {
   return `${snippet}\n${caret}`;
 }
 
-const TEXT_SYSTEM_PROMPT = `You are an event extractor for student schedules and syllabi.
-Input is normalized text lines (including flattened CSV-like table rows joined with " | ").
-Extract ONLY dated academic items with concise names. Be exhaustive: for each tabular row that contains a due/date field, create one event.
-Ignore in names: section/room codes, locations, instructor names/emails, URLs.
-
-Schema ONLY:
-{
-  "events": [
-    {
-      "event_name": "Title-Case Short Name",
-      "event_date": "YYYY-MM-DD",
-      "event_time": "HH:MM" | null,
-      "event_tag": "assignment|homework|reading|quiz|exam|midterm|final|project|lab|lecture|class|presentation|workshop|office_hours|deadline|other" | null,
-      "event_label": string | null
-    }
-  ]
-}
-
+const TEXT_SYSTEM_PROMPT = `You are a professional student event extractor for schedules and syllabi.
+Input is normalized text lines (some are flattened table rows joined with " | ").
+Ignore noisy tokens like single-letter weekdays (M, T, W, Th, F), section/room codes, locations, instructor names, emails, and URLs.
+Extract ONLY dated events/assignments with concise names.
 Rules:
-- Title-Case, professional, ≤ 40 chars; no dates/times/pronouns/descriptions in event_name.
-- Preserve identifiers like "HW 3", "Lab 2", "Ch. 5.1–5.2".
+- Extract course numbers to put into the labels section which c
+- Output schema ONLY: { "events": [ { "event_name": "Title-Case Short Name", "event_date": "YYYY-MM-DD", "event_time": "HH:MM" | null, "event_tag": "interview|exam|midterm|quiz|homework|assignment|class|lecture|lab|meeting|appointment|holiday|break|no_class|school_closed|other" | null } ] }
+- Title-Case, professional, ≤ 40 chars; no dates/times/pronouns/descriptions in names. Do NOT echo source lines; do NOT include section numbers, room/location, URLs, instructor names, or extra notes in event_name.
 - Use current year if missing (${new Date().getFullYear()}).
 - Accept dates like YYYY-MM-DD, MM/DD, M/D, "Oct 5", "October 5".
-- Times: "12 pm"→"12:00"; ranges use start time.
-- If due/submit/turn-in/deadline and no time is present, set "23:59"; otherwise if no time, event_time = null.
-- If a line lists multiple distinct items for the same date, create multiple events.
-- event_label: if a course/subject/number/name column is present (e.g., "Course", "Class", "Subject", "NURS 210"), use that value; otherwise infer a short course code/name from the row; if none, null.
-Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
+- Times: "12 pm", "12:00pm", "12–1 pm", "noon"→"12:00", "midnight"→"00:00", ranges use start.
+- If text implies due/submit/turn-in and no time, use "23:59".
+- If no time in the line, event_time = null.
+- If a line mentions multiple items for a date, create multiple events for that date.
+- Be exhaustive; do not skip minor items.
+Return ONLY valid JSON. No commentary, no markdown, no trailing commas.`;
 
-const VISION_SYSTEM_PROMPT = `You are an event extractor reading academic schedules as images (use built-in OCR).
-Output ONLY events that have a resolvable calendar date.
+const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
 
-Date handling:
-- Accept 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
-- Normalize to YYYY-MM-DD. If year missing, use ${new Date().getFullYear()}.
-- For calendar grids/tables, read month/year from headers and carry them forward until a new header appears.
-- Associate day numbers/cells with nearby items in the same row/cell/box; otherwise look to nearest header in the same column/section.
+Goal: OUTPUT ONLY events that have a resolvable calendar date.
 
-Name noise to ignore: room/building, campus names, URLs, instructor names/emails, map links.
+How to read dates:
+- Accept: 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
+- Normalize all dates to YYYY-MM-DD. If the year is missing, use ${new Date().getFullYear()}.
+- For calendar grids or tables, read month/year from headers and carry them forward until a new header appears.
+- For each row/cell, if a day number or date is shown separately from the event text, associate that date with the nearby items in the same row/cell/box.
+- If the date is not visible near the item, look up to the nearest date header/column heading in the same column or section.
 
-Combine vs split:
-- "Practice — 5.1 & 5.2" → one event preserving "5.1 & 5.2".
-- "HW 3 due; Quiz 2" → split into separate events.
+Noise to ignore in NAMES (do NOT ignore dates): room/location strings, URLs, instructor names/emails, campus/building names, map links.
+
+Combining vs splitting:
+- If one line lists multiple sections for the SAME assignment (e.g., "Practice problems — sections 5.1 & 5.2"), create ONE event name that preserves "5.1 & 5.2".
+- Split only when a line clearly has different tasks (e.g., "HW 3 due; Quiz 2").
 
 Schema ONLY:
 {
@@ -172,24 +160,24 @@ Schema ONLY:
       "event_name": "Title-Case Short Name",
       "event_date": "YYYY-MM-DD",
       "event_time": "HH:MM" | null,
-      "event_tag": "assignment|homework|reading|quiz|exam|midterm|final|project|lab|lecture|class|presentation|workshop|office_hours|deadline|other" | null,
-      "event_label": string | null
+      "event_tag": "interview|exam|midterm|quiz|homework|assignment|project|lab|lecture|class|meeting|office_hours|presentation|deadline|workshop|holiday|break|no_class|school_closed|other" | null
     }
   ]
 }
 
+Name rules:
+- Title-Case, ≤ 40 chars, concise, no dates/times/pronouns/descriptions.
+- Preserve meaningful section/chapter identifiers like "5.1 & 5.2" in the name.
 Time rules:
 - "noon"→"12:00", "midnight"→"00:00", ranges use start time.
-- If due/submit/turn-in/deadline and no time is shown → "23:59"; else if no time → null.
+- Due/submit/turn-in with no time → "23:59"; otherwise if no time, event_time = null.
 
-Label rule:
-- Derive event_label from visible course/subject/number/name near the item (e.g., "BIO 201", "NURSING Pharmacology"); if none, leave null.
+CRITICAL: Every event MUST include a valid event_date. If you cannot determine a date with high confidence, SKIP that item.
 
-CRITICAL: Every event MUST include a valid event_date. If the date cannot be resolved with high confidence, skip the item.
 Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
 
 const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
-{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null, "event_label": "..."|null } ] }
+{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
 Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`;
 
 async function fileToDataURL(file: File): Promise<string> {
@@ -201,71 +189,6 @@ async function fileToDataURL(file: File): Promise<string> {
   });
 }
 
-function enhanceToBW(dataUrl: string, contrast = 1.35, brightness = 1.05): string {
-  return (() => {
-    const img = new Image();
-    img.src = dataUrl;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d")!;
-    const w = img.width;
-    const h = img.height;
-    if (!w || !h) return dataUrl;
-    canvas.width = w;
-    canvas.height = h;
-    ctx.filter = `contrast(${contrast}) brightness(${brightness})`;
-    ctx.drawImage(img, 0, 0, w, h);
-    const imgData = ctx.getImageData(0, 0, w, h);
-    const d = imgData.data;
-    let sum = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-      sum += y;
-    }
-    const avg = sum / (d.length / 4);
-    const thresh = Math.min(255, Math.max(0, avg * 0.95));
-    for (let i = 0; i < d.length; i += 4) {
-      const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-      const v = y > thresh ? 255 : 0;
-      d[i] = v;
-      d[i + 1] = v;
-      d[i + 2] = v;
-    }
-    ctx.putImageData(imgData, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.95);
-  })();
-}
-
-function enhanceAndTile(dataUrl: string, grid = TILE_GRID, overlapPct = TILE_OVERLAP): string[] {
-  const bw = enhanceToBW(dataUrl);
-  const base = new Image();
-  base.src = bw;
-  const W = base.width || 0;
-  const H = base.height || 0;
-  if (!W || !H) return [bw];
-  const tiles: string[] = [];
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
-  const stepX = Math.floor(W / grid);
-  const stepY = Math.floor(H / grid);
-  const overlapX = Math.floor(stepX * overlapPct);
-  const overlapY = Math.floor(stepY * overlapPct);
-  for (let gy = 0; gy < grid; gy++) {
-    for (let gx = 0; gx < grid; gx++) {
-      const x0 = Math.max(0, gx * stepX - overlapX);
-      const y0 = Math.max(0, gy * stepY - overlapY);
-      const x1 = Math.min(W, (gx + 1) * stepX + overlapX);
-      const y1 = Math.min(H, (gy + 1) * stepY + overlapY);
-      const w = Math.max(1, x1 - x0);
-      const h = Math.max(1, y1 - y0);
-      canvas.width = w;
-      canvas.height = h;
-      ctx.drawImage(base, x0, y0, w, h, 0, 0, w, h);
-      tiles.push(canvas.toDataURL("image/jpeg", 0.95));
-    }
-  }
-  return tiles;
-}
-
 async function renderPdfToImages(
   file: File,
   maxPages = MAX_PDF_PAGES,
@@ -273,22 +196,23 @@ async function renderPdfToImages(
 ): Promise<string[]> {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await getDocument({ data }).promise;
+
   const urls: string[] = [];
   const pages = Math.min(pdf.numPages, maxPages);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
+
   for (let i = 1; i <= pages; i++) {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale });
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
     await page.render({ canvasContext: ctx as any, viewport }).promise;
-    const raw = canvas.toDataURL("image/jpeg", 0.95);
-    const bw = enhanceToBW(raw);
-    urls.push(bw);
+    urls.push(canvas.toDataURL("image/jpeg", 0.92));
   }
   return urls;
 }
+
 
 async function extractTextFromDocx(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
@@ -313,26 +237,19 @@ async function extractTextFromDocx(file: File): Promise<string> {
   return lines.join("\n");
 }
 
-function extractTextFromXlsxSmart(file: File): Promise<string> {
-  return new Promise(async (resolve) => {
-    const data = await file.arrayBuffer();
-    const wb = XLSX.read(data, { type: "array" });
-    const parts: string[] = [];
-    for (const name of wb.SheetNames) {
-      const sheet = wb.Sheets[name];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-      if (!rows.length) continue;
+async function extractTextFromXlsx(file: File): Promise<string> {
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: "array" });
+  const parts: string[] = [];
+  for (const name of wb.SheetNames) {
+    const sheet = wb.Sheets[name];
+    const csv = XLSX.utils.sheet_to_csv(sheet);
+    if (csv && csv.trim()) {
       parts.push(`[Sheet: ${name}]`);
-      const headers = Object.keys(rows[0] || {}).map((h) => String(h));
-      parts.push(`HEADERS | ${headers.join(" | ")}`);
-      for (const row of rows) {
-        const values = headers.map((h) => String(row[h] ?? "").trim());
-        const line = values.join(" | ");
-        if (line.replace(/\|/g, "").trim()) parts.push(line);
-      }
+      parts.push(csv.trim());
     }
-    resolve(parts.join("\n").trim());
-  });
+  }
+  return parts.join("\n").trim();
 }
 
 function denoiseLine(line: string): string {
@@ -442,8 +359,8 @@ async function callOpenAI_JSON_TextBatch(
         {
           role: "user",
           content:
-            `Batch ${batchIndex + 1}/${totalBatches}. Academic mode: for CSV-like rows, create one event per row that contains a due/date field. Normalize and ignore noise (rooms, sections, URLs, instructor names).\n` +
-            `Extract dates, names, tags, and label (course/subject). Multiple items per date allowed.\n` +
+            `Batch ${batchIndex + 1}/${totalBatches}. Normalize & ignore noise (weekday letters, rooms, sections, URLs, instructor names).\n` +
+            `Extract ONLY dates + event/assignment names. Multiple items per date allowed.\n` +
             `---BEGIN---\n${batchText}\n---END---`,
         },
       ],
@@ -508,7 +425,9 @@ async function callOpenAI_JSON_VisionBatch(
     {
       type: "text",
       text:
-        "Academic mode: Extract events WITH DATES. Resolve dates via headers/columns/cells; normalize; derive event_label from course/subject nearby; preserve identifiers in event_name.",
+        "Extract events WITH DATES from these schedule images. Every event MUST have event_date in YYYY-MM-DD. " +
+        "Use headers/column/cell context to resolve dates; if still unknown, omit the item. " +
+        "Normalize US-style dates and carry forward month/year from headings. Preserve section identifiers like 5.1 & 5.2 in the event_name.",
     },
   ];
   for (const url of imageDataUrls) userContent.push({ type: "image_url", image_url: { url } });
@@ -584,38 +503,26 @@ export class OpenAIFilesService {
     const type = (file.type || "").toLowerCase();
 
     if (type.startsWith("image/")) {
-      const base = await fileToDataURL(file);
-      const tiles = enhanceAndTile(base, TILE_GRID, TILE_OVERLAP);
-      const batches = chunkArray(tiles, IMAGE_TILES_PER_BATCH);
-      let tokens = 0;
-      let allEvents: ParsedEvent[] = [];
-      for (let i = 0; i < batches.length; i++) {
-        const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(batches[i], i, batches.length);
-        tokens += tokensUsed;
-        const evs = (parsed.events || []) as ParsedEvent[];
-        allEvents.push(...evs.slice(0, BATCH_EVENT_CAP));
-      }
-      allEvents = postNormalizeEvents(allEvents);
-      allEvents = dedupeEvents(allEvents);
-      return { events: allEvents, tokensUsed: tokens };
+      const url = await fileToDataURL(file);
+      const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch([url], 0, 1);
+      let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[];
+      events = postNormalizeEvents(events);
+      events = dedupeEvents(events);
+      return { events, tokensUsed };
     }
 
     if (type.includes("pdf") || name.endsWith(".pdf")) {
-      const pageImages = await renderPdfToImages(file, MAX_PDF_PAGES, VISION_RENDER_SCALE);
-      if (!pageImages.length) throw new Error("Could not render any PDF pages.");
-      const allTiles: string[] = [];
-      for (const p of pageImages) {
-        const tiles = enhanceAndTile(p, TILE_GRID, TILE_OVERLAP);
-        allTiles.push(...tiles);
-      }
-      const batches = chunkArray(allTiles, IMAGE_TILES_PER_BATCH);
+      const urls = await renderPdfToImages(file, MAX_PDF_PAGES, VISION_RENDER_SCALE);
+      if (!urls.length) throw new Error("Could not render any PDF pages.");
+      const pageBatches = chunkArray(urls, PDF_PAGES_PER_VISION_BATCH);
       let tokens = 0;
       let allEvents: ParsedEvent[] = [];
-      for (let i = 0; i < batches.length; i++) {
-        const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(batches[i], i, batches.length);
+      for (let i = 0; i < pageBatches.length; i++) {
+        const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(pageBatches[i], i, pageBatches.length);
         tokens += tokensUsed;
         const evs = (parsed.events || []) as ParsedEvent[];
-        allEvents.push(...evs.slice(0, BATCH_EVENT_CAP));
+        const evsCapped = evs.slice(0, BATCH_EVENT_CAP);
+        allEvents.push(...evsCapped);
       }
       allEvents = postNormalizeEvents(allEvents);
       allEvents = dedupeEvents(allEvents);
@@ -631,7 +538,7 @@ export class OpenAIFilesService {
       name.endsWith(".xls") ||
       name.endsWith(".csv")
     ) {
-      raw = await extractTextFromXlsxSmart(file);
+      raw = await extractTextFromXlsx(file);
     } else if (type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text();
     } else {
@@ -657,90 +564,12 @@ export class OpenAIFilesService {
       const { parsed, tokensUsed } = await callOpenAI_JSON_TextBatch(batches[i], i, batches.length);
       tokens += tokensUsed;
       const evs = (parsed.events || []) as ParsedEvent[];
-      allEvents.push(...evs.slice(0, BATCH_EVENT_CAP));
+      const evsCapped = evs.slice(0, BATCH_EVENT_CAP);
+      allEvents.push(...evsCapped);
     }
 
     allEvents = postNormalizeEvents(allEvents);
     allEvents = dedupeEvents(allEvents);
     return { events: allEvents, tokensUsed: tokens };
-  }
-}
-
-const TEXTBOX_SYSTEM_PROMPT = `You are a student-focused calendar parser. Extract academic events from natural language and return JSON.
-
-Current date for reference: ${new Date().toISOString().split('T')[0]}
-
-Naming & Formatting:
-- SHORT, professional Title-Case "event_name" (≤ 50 chars).
-- Prefer concise academic patterns: "CS 201 Homework 3", "Biology Lab 2", "Math Quiz 1", "Physics Midterm", "Reading Ch. 5".
-- No dates/times/pronouns in event_name; no room/instructor/URLs.
-
-Tag guidance:
-- Use one of: assignment, homework, reading, quiz, exam, midterm, final, project, lab, lecture, class, presentation, workshop, office_hours, deadline, other. If unclear → null.
-
-Label guidance:
-- event_label should be the course number or course name if present or inferable (e.g., "NURS 210", "Pathophysiology"). If none, null.
-
-Other Rules:
-- If year missing, use current year (${new Date().getFullYear()}).
-- Dates: YYYY-MM-DD
-- Times: HH:MM (24-hour)
-- If text implies due/submit/turn-in/deadline and no time → "23:59"; else if time missing → null.
-- If none found, return an empty array.
-
-Return ONLY valid JSON in this shape:
-{
-  "events": [
-    {
-      "event_name": "CS 201 Homework 3",
-      "event_date": "2025-10-05",
-      "event_time": "23:59",
-      "event_tag": "homework",
-      "event_label": "CS 201"
-    }
-  ]
-}`;
-
-export class OpenAITextService {
-  static async parseNaturalLanguage(text: string): Promise<ParseResult> {
-    if (!OPENAI_API_KEY) throw new Error('OpenAI API key not configured');
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: TEXTBOX_SYSTEM_PROMPT },
-          { role: 'user', content: text },
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
-      }),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error?.error?.message || 'OpenAI API request failed');
-    }
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    const tokensUsed = data.usage?.total_tokens || 0;
-    let parsed: any;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('Failed to parse AI response as JSON');
-      }
-    }
-    return {
-      events: parsed.events || [],
-      tokensUsed,
-    };
   }
 }
