@@ -1,7 +1,6 @@
-// src/services/openaiFiles.ts
-import mammoth from "mammoth";          // DOCX → HTML/text
-import * as XLSX from "xlsx";           // XLS/XLSX/CSV → text
-import * as pdfjsLib from "pdfjs-dist"; // PDF → render pages to images (vision OCR via GPT-4o)
+import mammoth from "mammoth";
+import * as XLSX from "xlsx";
+import * as pdfjsLib from "pdfjs-dist";
 
 export interface ParsedEvent {
   event_name: string;
@@ -15,16 +14,15 @@ export interface ParseResult {
   tokensUsed: number;
 }
 
-/** -------------------- Debug plumbing -------------------- */
 type AIDebugInfo = {
   mode: "text" | "vision";
   model: string;
   batchIndex: number;
   totalBatches: number;
   systemPromptFirst400: string;
-  userContentFirst1200?: string; // text mode
-  userContentLength?: number;    // text mode
-  imageCount?: number;           // vision mode
+  userContentFirst1200?: string;
+  userContentLength?: number;
+  imageCount?: number;
   rawResponseFirst2000?: string;
   rawResponseLength?: number;
   parseError?: {
@@ -35,29 +33,25 @@ type AIDebugInfo = {
     excerpt?: string;
   };
 };
+
 let lastAIBatches: AIDebugInfo[] = [];
-// expose in console
-// @ts-ignore
 if (typeof window !== "undefined" && !(window as any).__AI_DEBUG__) {
-  // @ts-ignore
   (window as any).__AI_DEBUG__ = () => lastAIBatches;
 }
 
-/** -------------------- Config -------------------- */
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const MAX_CONTENT_TOKENS = 2000;
+const MAX_LINES_PER_TEXT_BATCH = 35;
+const MAX_CHARS_PER_TEXT_BATCH = 1200;
+const MAX_PDF_PAGES = 10;
+const PDF_PAGES_PER_VISION_BATCH = 1;
+const VISION_RENDER_SCALE = 1.4;
+const VISION_MODEL = "gpt-4o";
+const TEXT_MODEL = "gpt-4o-mini";
+const MAX_TOKENS_TEXT = 550;
+const MAX_TOKENS_VISION = 650;
+const BATCH_EVENT_CAP = 60;
 
-// Batching limits (tune these if needed)
-const MAX_LINES_PER_TEXT_BATCH = 120;
-const MAX_CHARS_PER_TEXT_BATCH = 3500;
-const MAX_PDF_PAGES = 10;        // overall cap we’ll process
-const PDF_PAGES_PER_VISION_BATCH = 2; // batch size for vision
-const VISION_RENDER_SCALE = 1.4;  // PDF render scale for clarity
-
-const VISION_MODEL = "gpt-4o";      // built-in OCR via vision
-const TEXT_MODEL = "gpt-4o-mini";   // cheaper for plain text
-
-/** -------------------- Small utils -------------------- */
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4);
 }
@@ -101,10 +95,13 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
 }
 
 function positionToLineCol(s: string, pos: number) {
-  let line = 1, col = 1;
+  let line = 1,
+    col = 1;
   for (let i = 0; i < pos && i < s.length; i++) {
-    if (s[i] === "\n") { line++; col = 1; }
-    else col++;
+    if (s[i] === "\n") {
+      line++;
+      col = 1;
+    } else col++;
   }
   return { line, col };
 }
@@ -116,16 +113,13 @@ function excerptAround(s: string, pos: number, radius = 120) {
   return `${snippet}\n${caret}`;
 }
 
-/** -------------------- Prompts -------------------- */
 const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi.
 Input is normalized text lines (some are flattened table rows joined with " | ").
 Ignore noisy tokens like single-letter weekdays (M, T, W, Th, F), section/room codes, locations, instructor names, emails, and URLs.
 Extract ONLY dated events/assignments with concise names.
-
 Rules:
-- Output schema ONLY:
-  { "events": [ { "event_name": "Title-Case Short Name", "event_date": "YYYY-MM-DD", "event_time": "HH:MM" | null, "event_tag": "interview|exam|midterm|quiz|homework|assignment|class|lecture|lab|meeting|appointment|holiday|break|no_class|school_closed|other" | null } ] }
-- Title-Case, professional, ≤ 50 chars; no dates/times/pronouns in names. Examples: "Integro Interview", "Homework 3", "Physics Midterm", "No Class (Holiday)".
+- Output schema ONLY: { "events": [ { "event_name": "Title-Case Short Name", "event_date": "YYYY-MM-DD", "event_time": "HH:MM" | null, "event_tag": "interview|exam|midterm|quiz|homework|assignment|class|lecture|lab|meeting|appointment|holiday|break|no_class|school_closed|other" | null } ] }
+- Title-Case, professional, ≤ 40 chars; no dates/times/pronouns/descriptions in names. Do NOT echo source lines; do NOT include section numbers, room/location, URLs, instructor names, or extra notes in event_name.
 - Use current year if missing (${new Date().getFullYear()}).
 - Accept dates like YYYY-MM-DD, MM/DD, M/D, "Oct 5", "October 5".
 - Times: "12 pm", "12:00pm", "12–1 pm", "noon"→"12:00", "midnight"→"00:00", ranges use start.
@@ -138,9 +132,8 @@ Return ONLY valid JSON. No commentary, no markdown, no trailing commas.`;
 const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
 Ignore noise: single-letter weekdays (M,T,W,Th,F), section/room codes, locations, instructor names, emails, URLs.
 Extract ONLY dated events/assignments with concise names.
-
 Follow the same schema and rules as the text prompt:
-- Title-Case names, ≤ 50 chars, no dates/times/pronouns in names.
+- Title-Case names, ≤ 40 chars, no dates/times/pronouns/descriptions in names. Do NOT echo page text; do NOT include section numbers, room/location, URLs, instructor names, or extra notes in event_name.
 - Current year if missing (${new Date().getFullYear()}).
 - Time parsing: "noon"→"12:00", "midnight"→"00:00", ranges use start.
 - Due with no time → "23:59"; none → null.
@@ -151,7 +144,6 @@ const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
 { "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
 Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`;
 
-/** -------------------- File → data helpers -------------------- */
 async function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -161,25 +153,19 @@ async function fileToDataURL(file: File): Promise<string> {
   });
 }
 
-/** Render up to N PDF pages to JPEG data URLs for GPT-4o vision */
 async function renderPdfToImages(file: File, maxPages = MAX_PDF_PAGES, scale = VISION_RENDER_SCALE): Promise<string[]> {
-  // Worker (browser)
-  // @ts-ignore
-  if (pdfjsLib?.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  if (pdfjsLib?.GlobalWorkerOptions && !(pdfjsLib as any).GlobalWorkerOptions.workerSrc) {
     try {
-      // @ts-ignore
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
+      (pdfjsLib as any).GlobalWorkerOptions.workerSrc =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     } catch {}
   }
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
-
   const urls: string[] = [];
   const pages = Math.min(pdf.numPages, maxPages);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-
   for (let i = 1; i <= pages; i++) {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale });
@@ -191,16 +177,12 @@ async function renderPdfToImages(file: File, maxPages = MAX_PDF_PAGES, scale = V
   return urls;
 }
 
-/** -------------------- Extractors for non-image files -------------------- */
 async function extractTextFromDocx(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const { value: html } = await (mammoth as any).convertToHtml({ arrayBuffer });
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-
   const parts: string[] = [];
-
-  // Tables → rows to single lines
   doc.querySelectorAll("table").forEach((table) => {
     table.querySelectorAll("tr").forEach((tr) => {
       const cells = Array.from(tr.querySelectorAll("th,td"))
@@ -210,13 +192,10 @@ async function extractTextFromDocx(file: File): Promise<string> {
       if (line) parts.push(line);
     });
   });
-
-  // Lists and paragraphs
   doc.querySelectorAll("li, p").forEach((el) => {
     const t = el.textContent?.replace(/\s+/g, " ").trim();
     if (t) parts.push(t);
   });
-
   const lines = [...new Set(parts)].map((s) => s.trim()).filter(Boolean);
   return lines.join("\n");
 }
@@ -224,7 +203,6 @@ async function extractTextFromDocx(file: File): Promise<string> {
 async function extractTextFromXlsx(file: File): Promise<string> {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: "array" });
-
   const parts: string[] = [];
   for (const name of wb.SheetNames) {
     const sheet = wb.Sheets[name];
@@ -237,26 +215,15 @@ async function extractTextFromXlsx(file: File): Promise<string> {
   return parts.join("\n").trim();
 }
 
-/** -------------------- Denoiser + normalizer -------------------- */
 function denoiseLine(line: string): string {
   let s = line;
-
-  // Remove isolated weekday tokens (M, T, Tu/Tue, W, Th/Thu, F/Fr, Sat, Sun)
-  s = s.replace(
-    /(^|\s)(M|T|Tu|Tue|Tues|W|Th|Thu|Thur|Thurs|F|Fr|Fri|Sat|Sun|Su)(?=\s|$)/gi,
-    " "
-  );
-
-  // Drop common location/section fields (simple, conservative)
+  s = s.replace(/(^|\s)(M|T|Tu|Tue|Tues|W|Th|Thu|Thur|Thurs|F|Fr|Fri|Sat|Sun|Su)(?=\s|$)/gi, " ");
   s = s
     .replace(/\b(Sec(t(ion)?)?\.?\s*[A-Za-z0-9\-]+)\b/gi, " ")
     .replace(/\b(Room|Rm\.?|Bldg|Building|Hall|Campus|Location)\s*[:#]?\s*[A-Za-z0-9\-\.\(\)]+/gi, " ")
     .replace(/\b(Zoom|Online|In[-\s]?Person)\b/gi, " ")
     .replace(/\b(CRN|Course\s*ID)\s*[:#]?\s*[A-Za-z0-9\-]+\b/gi, " ");
-
-  // Normalize bullets/spacing
   s = s.replace(/[•●▪■]/g, "-").replace(/\s{2,}/g, " ").trim();
-
   return s;
 }
 
@@ -267,21 +234,17 @@ function toStructuredPlainText(raw: string): string {
     .replace(/\s+\n/g, "\n")
     .replace(/\n{2,}/g, "\n")
     .trim();
-
   const lines = cleaned
     .split("\n")
     .map((l) => denoiseLine(l))
     .filter(Boolean);
-
   return lines.join("\n");
 }
 
-/** -------------------- Batching helpers -------------------- */
 function chunkLines(lines: string[], maxLines: number, maxChars: number): string[] {
   const batches: string[] = [];
   let buf: string[] = [];
   let charCount = 0;
-
   for (const line of lines) {
     const addLen = line.length + 1;
     if (buf.length >= maxLines || charCount + addLen > maxChars) {
@@ -302,7 +265,6 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-/** -------------------- OpenAI calls -------------------- */
 async function repairMalformedJSON(bad: string): Promise<{ parsed: any; tokensUsed: number } | null> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -322,11 +284,9 @@ async function repairMalformedJSON(bad: string): Promise<{ parsed: any; tokensUs
     }),
   });
   if (!res.ok) return null;
-
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
-
   try {
     const parsed = JSON.parse(content);
     return { parsed, tokensUsed };
@@ -349,7 +309,6 @@ async function callOpenAI_JSON_TextBatch(
     userContentFirst1200: batchText.slice(0, 1200),
     userContentLength: batchText.length,
   };
-
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -369,39 +328,32 @@ async function callOpenAI_JSON_TextBatch(
         },
       ],
       temperature: 0.0,
-      max_tokens: 900, // smallish to avoid truncation
+      max_tokens: MAX_TOKENS_TEXT,
       response_format: { type: "json_object" },
     }),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.error?.message || "OpenAI API request failed");
   }
-
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
-
   dbg.rawResponseFirst2000 = content.slice(0, 2000);
   dbg.rawResponseLength = content.length;
-
   try {
     const parsed = JSON.parse(content);
     lastAIBatches.push(dbg);
     return { parsed, tokensUsed };
   } catch (e: any) {
-    // attempt repair
     const repaired = await repairMalformedJSON(content);
     if (repaired) {
       lastAIBatches.push(dbg);
       return { parsed: repaired.parsed, tokensUsed: tokensUsed + repaired.tokensUsed };
     }
-
     const msg = String(e?.message || "JSON parse error");
     const m = msg.match(/position (\d+)/i);
     const pos = m ? parseInt(m[1], 10) : undefined;
-
     if (typeof pos === "number") {
       const lc = positionToLineCol(content, pos);
       dbg.parseError = {
@@ -432,12 +384,15 @@ async function callOpenAI_JSON_VisionBatch(
     systemPromptFirst400: VISION_SYSTEM_PROMPT.slice(0, 400),
     imageCount: imageDataUrls.length,
   };
-
   const userContent: Array<any> = [
-    { type: "text", text: "Read these schedule images. Ignore weekday letters, rooms, sections, URLs, instructor names, and other noise. Extract ONLY dated events/assignments with concise names. Return JSON." },
+    {
+      type: "text",
+      text:
+        "Read these schedule images. Ignore weekday letters, rooms, sections, URLs, instructor names, and other noise. " +
+        "Extract ONLY dated events/assignments with concise names. Return JSON.",
+    },
   ];
   for (const url of imageDataUrls) userContent.push({ type: "image_url", image_url: { url } });
-
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -451,23 +406,19 @@ async function callOpenAI_JSON_VisionBatch(
         { role: "user", content: userContent },
       ],
       temperature: 0.0,
-      max_tokens: 1000, // smallish to avoid truncation
+      max_tokens: MAX_TOKENS_VISION,
       response_format: { type: "json_object" },
     }),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.error?.message || "OpenAI API request failed");
   }
-
   const data = await res.json();
   const content = data?.choices?.[0]?.message?.content ?? "";
   const tokensUsed = data?.usage?.total_tokens ?? 0;
-
   dbg.rawResponseFirst2000 = content.slice(0, 2000);
   dbg.rawResponseLength = content.length;
-
   try {
     const parsed = JSON.parse(content);
     lastAIBatches.push(dbg);
@@ -478,11 +429,9 @@ async function callOpenAI_JSON_VisionBatch(
       lastAIBatches.push(dbg);
       return { parsed: repaired.parsed, tokensUsed: tokensUsed + repaired.tokensUsed };
     }
-
     const msg = String(e?.message || "JSON parse error");
     const m = msg.match(/position (\d+)/i);
     const pos = m ? parseInt(m[1], 10) : undefined;
-
     if (typeof pos === "number") {
       const lc = positionToLineCol(content, pos);
       dbg.parseError = {
@@ -500,16 +449,13 @@ async function callOpenAI_JSON_VisionBatch(
   }
 }
 
-/** -------------------- Public API -------------------- */
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
-    lastAIBatches = []; // reset per call
-
+    lastAIBatches = [];
     const name = (file.name || "").toLowerCase();
     const type = (file.type || "").toLowerCase();
 
-    // IMAGES → single vision batch
     if (type.startsWith("image/")) {
       const url = await fileToDataURL(file);
       const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch([url], 0, 1);
@@ -519,27 +465,24 @@ export class OpenAIFilesService {
       return { events, tokensUsed };
     }
 
-    // PDFs → render pages, then process in small vision batches
     if (type.includes("pdf") || name.endsWith(".pdf")) {
       const urls = await renderPdfToImages(file, MAX_PDF_PAGES, VISION_RENDER_SCALE);
       if (!urls.length) throw new Error("Could not render any PDF pages.");
       const pageBatches = chunkArray(urls, PDF_PAGES_PER_VISION_BATCH);
-
       let tokens = 0;
       let allEvents: ParsedEvent[] = [];
       for (let i = 0; i < pageBatches.length; i++) {
         const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch(pageBatches[i], i, pageBatches.length);
         tokens += tokensUsed;
         const evs = (parsed.events || []) as ParsedEvent[];
-        allEvents.push(...evs);
+        const evsCapped = evs.slice(0, BATCH_EVENT_CAP);
+        allEvents.push(...evsCapped);
       }
-
       allEvents = postNormalizeEvents(allEvents);
       allEvents = dedupeEvents(allEvents);
       return { events: allEvents, tokensUsed: tokens };
     }
 
-    // DOCX/XLSX/CSV/TXT → parse text deterministically, then TEXT_MODEL in batches
     let raw = "";
     if (type.includes("word") || name.endsWith(".docx")) {
       raw = await extractTextFromDocx(file);
@@ -561,7 +504,6 @@ export class OpenAIFilesService {
     const structured = toStructuredPlainText(raw);
     const estimatedTokens = estimateTokens(structured);
     if (estimatedTokens > MAX_CONTENT_TOKENS) {
-      // Still enforce an upper bound to protect quotas and avoid huge replies
       throw new Error(
         `Document contains too much information (~${estimatedTokens} tokens). Please upload a smaller section. Maximum allowed: ${MAX_CONTENT_TOKENS} tokens.`
       );
@@ -576,7 +518,8 @@ export class OpenAIFilesService {
       const { parsed, tokensUsed } = await callOpenAI_JSON_TextBatch(batches[i], i, batches.length);
       tokens += tokensUsed;
       const evs = (parsed.events || []) as ParsedEvent[];
-      allEvents.push(...evs);
+      const evsCapped = evs.slice(0, BATCH_EVENT_CAP);
+      allEvents.push(...evsCapped);
     }
 
     allEvents = postNormalizeEvents(allEvents);
