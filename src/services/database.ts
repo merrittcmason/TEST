@@ -30,8 +30,7 @@ export class DatabaseService {
 
   /**
    * Don’t call this from the client anymore.
-   * Your DB trigger (on auth.users insert) should create the profile with plan_type='free'.
-   * Leaving this here to avoid compile errors if referenced, but it throws to prevent misuse.
+   * Profiles are created by a DB trigger on auth.users insert (plan_type='free').
    */
   static async createUser(
     _userId: string,
@@ -47,7 +46,7 @@ export class DatabaseService {
   ): Promise<User> {
     const { data, error } = await supabase
       .from('users')
-      .update(updates) // e.g., updating name; plan_type should normally be changed via a controlled RPC
+      .update(updates) // plan_type changes should go through a controlled RPC/server
       .eq('id', userId)
       .select()
       .single();
@@ -147,9 +146,7 @@ export class DatabaseService {
     if (error) throw error;
   }
 
-  /** -------------------- TOKEN USAGE --------------------
-   * NOTE: If you tighten RLS (recommended), writes should be done from your backend using the service role.
-   */
+  /** -------------------- TOKEN USAGE (READ-ONLY on client) -------------------- */
 
   static async getTokenUsage(userId: string, month: string): Promise<TokenUsage | null> {
     const { data, error } = await supabase
@@ -163,40 +160,20 @@ export class DatabaseService {
     return data;
   }
 
+  /**
+   * Client writes are disabled by design (RLS is SELECT-only).
+   * Updates must be done by a backend using the service role or a secure RPC.
+   */
   static async createOrUpdateTokenUsage(
-    userId: string,
-    month: string,
-    tokensUsed: number,
-    tokensLimit: number
+    _userId: string,
+    _month: string,
+    _tokensUsed: number,
+    _tokensLimit: number
   ): Promise<TokenUsage> {
-    const existing = await this.getTokenUsage(userId, month);
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from('token_usage')
-        .update({ tokens_used: tokensUsed })
-        .eq('user_id', userId)
-        .eq('month', month)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data as TokenUsage;
-    } else {
-      const { data, error } = await supabase
-        .from('token_usage')
-        .insert({ user_id: userId, month, tokens_used: tokensUsed, tokens_limit: tokensLimit })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data as TokenUsage;
-    }
+    throw new Error('client writes disabled: token_usage is system-managed');
   }
 
-  /** -------------------- UPLOAD QUOTAS --------------------
-   * NOTE: Same service-role caveat as above if you harden RLS.
-   */
+  /** -------------------- UPLOAD QUOTAS (READ-ONLY on client) -------------------- */
 
   static async getUploadQuota(userId: string, month: string): Promise<UploadQuota | null> {
     const { data, error } = await supabase
@@ -210,40 +187,21 @@ export class DatabaseService {
     return data;
   }
 
+  /**
+   * Client writes are disabled by design (RLS is SELECT-only).
+   * Updates must be done by a backend using the service role or a secure RPC.
+   */
   static async createOrUpdateUploadQuota(
-    userId: string,
-    month: string,
-    uploadsUsed: number,
-    uploadsLimit: number
+    _userId: string,
+    _month: string,
+    _uploadsUsed: number,
+    _uploadsLimit: number
   ): Promise<UploadQuota> {
-    const existing = await this.getUploadQuota(userId, month);
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from('upload_quotas')
-        .update({ uploads_used: uploadsUsed })
-        .eq('user_id', userId)
-        .eq('month', month)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data as UploadQuota;
-    } else {
-      const { data, error } = await supabase
-        .from('upload_quotas')
-        .insert({ user_id: userId, month, uploads_used: uploadsUsed, uploads_limit: uploadsLimit })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data as UploadQuota;
-    }
+    throw new Error('client writes disabled: upload_quotas is system-managed');
   }
 
   /** -------------------- SUBSCRIPTIONS --------------------
-   * Strongly recommended: perform create/update from your backend with the service role,
-   * since user-side writes should be restricted.
+   * Recommended: perform create/update from your backend with the service role.
    */
 
   static async getActiveSubscription(userId: string): Promise<Subscription | null> {
