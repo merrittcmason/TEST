@@ -130,15 +130,44 @@ Rules:
 Return ONLY valid JSON. No commentary, no markdown, no trailing commas.`;
 
 const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
-Ignore noise: single-letter weekdays (M,T,W,Th,F), section/room codes, locations, instructor names, emails, URLs.
-Extract ONLY dated events/assignments with concise names.
-Follow the same schema and rules as the text prompt:
-- Title-Case names, ≤ 40 chars, no dates/times/pronouns/descriptions in names. Do NOT echo page text; do NOT include section numbers, room/location, URLs, instructor names, or extra notes in event_name.
-- Current year if missing (${new Date().getFullYear()}).
-- Time parsing: "noon"→"12:00", "midnight"→"00:00", ranges use start.
-- Due with no time → "23:59"; none → null.
-- Multiple items per date → multiple events.
-Return ONLY valid JSON.`;
+
+Goal: OUTPUT ONLY events that have a resolvable calendar date.
+
+How to read dates:
+- Accept: 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
+- Normalize all dates to YYYY-MM-DD. If the year is missing, use ${new Date().getFullYear()}.
+- For calendar grids or tables, read month/year from headers and carry them forward until a new header appears.
+- For each row/cell, if a day number or date is shown separately from the event text, associate that date with the nearby items in the same row/cell/box.
+- If the date is not visible near the item, look up to the nearest date header/column heading in the same column or section.
+
+Noise to ignore in NAMES (do NOT ignore dates): room/location strings, URLs, instructor names/emails, campus/building names, map links.
+
+Combining vs splitting:
+- If one line lists multiple sections for the SAME assignment (e.g., "Practice problems — sections 5.1 & 5.2"), create ONE event name that preserves "5.1 & 5.2".
+- Split only when a line clearly has different tasks (e.g., "HW 3 due; Quiz 2").
+
+Schema ONLY:
+{
+  "events": [
+    {
+      "event_name": "Title-Case Short Name",
+      "event_date": "YYYY-MM-DD",
+      "event_time": "HH:MM" | null,
+      "event_tag": "interview|exam|midterm|quiz|homework|assignment|project|lab|lecture|class|meeting|office_hours|presentation|deadline|workshop|holiday|break|no_class|school_closed|other" | null
+    }
+  ]
+}
+
+Name rules:
+- Title-Case, ≤ 40 chars, concise, no dates/times/pronouns/descriptions.
+- Preserve meaningful section/chapter identifiers like "5.1 & 5.2" in the name.
+Time rules:
+- "noon"→"12:00", "midnight"→"00:00", ranges use start time.
+- Due/submit/turn-in with no time → "23:59"; otherwise if no time, event_time = null.
+
+CRITICAL: Every event MUST include a valid event_date. If you cannot determine a date with high confidence, SKIP that item.
+
+Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
 
 const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
 { "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
@@ -388,8 +417,9 @@ async function callOpenAI_JSON_VisionBatch(
     {
       type: "text",
       text:
-        "Read these schedule images. Ignore weekday letters, rooms, sections, URLs, instructor names, and other noise. " +
-        "Extract ONLY dated events/assignments with concise names. Return JSON.",
+        "Extract events WITH DATES from these schedule images. Every event MUST have event_date in YYYY-MM-DD. " +
+        "Use headers/column/cell context to resolve dates; if still unknown, omit the item. " +
+        "Normalize US-style dates and carry forward month/year from headings. Preserve section identifiers like 5.1 & 5.2 in the event_name.",
     },
   ];
   for (const url of imageDataUrls) userContent.push({ type: "image_url", image_url: { url } });
@@ -421,13 +451,21 @@ async function callOpenAI_JSON_VisionBatch(
   dbg.rawResponseLength = content.length;
   try {
     const parsed = JSON.parse(content);
+    let events = (parsed.events || []) as ParsedEvent[];
+    events = events.filter(
+      (e) => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date)
+    );
     lastAIBatches.push(dbg);
-    return { parsed, tokensUsed };
+    return { parsed: { events }, tokensUsed };
   } catch (e: any) {
     const repaired = await repairMalformedJSON(content);
     if (repaired) {
+      let events = (repaired.parsed.events || []) as ParsedEvent[];
+      events = events.filter(
+        (ev) => typeof ev.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ev.event_date)
+      );
       lastAIBatches.push(dbg);
-      return { parsed: repaired.parsed, tokensUsed: tokensUsed + repaired.tokensUsed };
+      return { parsed: { events }, tokensUsed: tokensUsed + (repaired.tokensUsed || 0) };
     }
     const msg = String(e?.message || "JSON parse error");
     const m = msg.match(/position (\d+)/i);
