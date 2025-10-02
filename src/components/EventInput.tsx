@@ -1,17 +1,33 @@
 import { useState } from 'react';
-import type { ParsedEvent } from '../services/openaiText';
-import { OpenAITextService } from '../services/openaiText';
-import { OpenAIFilesService } from '../services/openaiFiles';
+import type { ParsedEvent } from '../services/openaiStandard'; // canonical type source
+// NOTE: services are now loaded per-mode via dynamic import (see getServices below)
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase'; // for RPC call
 import './EventInput.css';
 
+type Mode = 'standard' | 'education' | 'work' | 'enterprise';
+
 interface EventInputProps {
   onEventsExtracted: (events: ParsedEvent[]) => void;
+  /** Current app mode drives which OpenAI service (prompts) are used */
+  mode: Mode;
 }
 
-export function EventInput({ onEventsExtracted }: EventInputProps) {
+type ServiceModule = {
+  OpenAITextService: { parseNaturalLanguage: (text: string) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
+  OpenAIFilesService: { parseFile: (file: File) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
+};
+
+// simple loader map for code-split per-mode services
+const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
+  standard: () => import('../services/openaiStandard') as unknown as Promise<ServiceModule>,
+  education: () => import('../services/openaiEducation') as unknown as Promise<ServiceModule>,
+  work: () => import('../services/openaiWork') as unknown as Promise<ServiceModule>,
+  enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>, // TBD uses standard prompts
+};
+
+export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
   const { user } = useAuth();
   const [textInput, setTextInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -21,6 +37,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
   const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const getServices = () => serviceLoaders[mode]();
 
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
@@ -68,7 +85,8 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     try {
       await checkQuotas(false);
 
-      // ✅ Textbox: use the TEXT service (original flow, improved naming prompt there)
+      // Load the correct mode's text service
+      const { OpenAITextService } = await getServices();
       const result = await OpenAITextService.parseNaturalLanguage(textInput);
 
       if (result.events.length === 0) {
@@ -77,7 +95,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      // No client writes — quotas are system-managed
       onEventsExtracted(result.events);
       setTextInput('');
     } catch (err: any) {
@@ -99,7 +116,8 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     try {
       await checkQuotas(true);
 
-      // ✅ Files: use the FILES service (deterministic parsing + JSON mode)
+      // Load the correct mode's files service
+      const { OpenAIFilesService } = await getServices();
       const result = await OpenAIFilesService.parseFile(selectedFile);
 
       if (result.events.length === 0) {
@@ -108,7 +126,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      // No client writes — quotas are system-managed
       onEventsExtracted(result.events);
       setSelectedFile(null);
     } catch (err: any) {
