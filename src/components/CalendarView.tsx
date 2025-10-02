@@ -149,9 +149,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                 ))
               )}
             </select>
-            <button onClick={handleToday} className="btn btn-secondary">
-              Today
-            </button>
+
             <div className="view-switcher">
               <button
                 className={`view-btn ${view === 'month' ? 'active' : ''}`}
