@@ -186,19 +186,19 @@ async function fileToDataURL(file: File): Promise<string> {
   });
 }
 
-async function renderPdfToImages(file: File, maxPages = MAX_PDF_PAGES, scale = VISION_RENDER_SCALE): Promise<string[]> {
-  if (pdfjsLib?.GlobalWorkerOptions && !(pdfjsLib as any).GlobalWorkerOptions.workerSrc) {
-    try {
-      (pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    } catch {}
-  }
+async function renderPdfToImages(
+  file: File,
+  maxPages = MAX_PDF_PAGES,
+  scale = VISION_RENDER_SCALE
+): Promise<string[]> {
   const data = new Uint8Array(await file.arrayBuffer());
   const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
+
   const urls: string[] = [];
   const pages = Math.min(pdf.numPages, maxPages);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
+
   for (let i = 1; i <= pages; i++) {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale });
@@ -209,6 +209,7 @@ async function renderPdfToImages(file: File, maxPages = MAX_PDF_PAGES, scale = V
   }
   return urls;
 }
+
 
 async function extractTextFromDocx(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
