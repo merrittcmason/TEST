@@ -20,17 +20,17 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     if (!user) throw new Error('Not authenticated');
 
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-    let [tokenUsage, uploadQuota] = await Promise.all([
+    const [tokenUsage, uploadQuota] = await Promise.all([
       DatabaseService.getTokenUsage(user.id, currentMonth),
       DatabaseService.getUploadQuota(user.id, currentMonth),
     ]);
 
     if (!tokenUsage) {
-      tokenUsage = await DatabaseService.createOrUpdateTokenUsage(user.id, currentMonth, 0, 500);
+      throw new Error('Missing token usage record. Please try again later.');
     }
 
     if (!uploadQuota) {
-      uploadQuota = await DatabaseService.createOrUpdateUploadQuota(user.id, currentMonth, 0, 1);
+      throw new Error('Missing upload quota record. Please try again later.');
     }
 
     if (isFileUpload) {
@@ -44,30 +44,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
     }
 
     return { tokenUsage, uploadQuota };
-  };
-
-  const updateQuotas = async (tokensUsed: number, isFileUpload: boolean) => {
-    if (!user) return;
-
-    const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-    const { tokenUsage, uploadQuota } = await checkQuotas(false);
-
-    const newTokensUsed = (tokenUsage?.tokens_used || 0) + tokensUsed;
-    await DatabaseService.createOrUpdateTokenUsage(
-      user.id,
-      currentMonth,
-      newTokensUsed,
-      tokenUsage?.tokens_limit || 500
-    );
-
-    if (isFileUpload && uploadQuota) {
-      await DatabaseService.createOrUpdateUploadQuota(
-        user.id,
-        currentMonth,
-        uploadQuota.uploads_used + 1,
-        uploadQuota.uploads_limit
-      );
-    }
   };
 
   const handleTextSubmit = async () => {
@@ -90,7 +66,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      await updateQuotas(result.tokensUsed, false);
       onEventsExtracted(result.events);
       setTextInput('');
     } catch (err: any) {
@@ -120,7 +95,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      await updateQuotas(result.tokensUsed, true);
       onEventsExtracted(result.events);
       setSelectedFile(null);
     } catch (err: any) {
