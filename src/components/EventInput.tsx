@@ -1,17 +1,30 @@
 import { useState } from 'react';
-import type { ParsedEvent } from '../services/openaiText';
-import { OpenAITextService } from '../services/openaiText';
-import { OpenAIFilesService } from '../services/openaiFiles';
+import type { ParsedEvent } from '../services/openaiStandard';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import './EventInput.css';
 
+type Mode = 'standard' | 'education' | 'work' | 'enterprise';
+
 interface EventInputProps {
   onEventsExtracted: (events: ParsedEvent[]) => void;
+  mode: Mode;
 }
 
-export function EventInput({ onEventsExtracted }: EventInputProps) {
+type ServiceModule = {
+  OpenAITextService: { parseNaturalLanguage: (text: string) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
+  OpenAIFilesService: { parseFile: (file: File) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
+};
+
+const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
+  standard: () => import('../services/openaiStandard') as unknown as Promise<ServiceModule>,
+  education: () => import('../services/openaiEducation') as unknown as Promise<ServiceModule>,
+  work: () => import('../services/openaiWork') as unknown as Promise<ServiceModule>,
+  enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>,
+};
+
+export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
   const { user } = useAuth();
   const [textInput, setTextInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -21,17 +34,15 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
   const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const getServices = () => serviceLoaders[mode]();
 
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
-
     const { error: rpcError } = await supabase.rpc('ensure_profile_and_current_quota');
     if (rpcError) throw new Error(`Quota provisioning failed: ${rpcError.message}`);
-
     let tokenUsage = null as Awaited<ReturnType<typeof DatabaseService.getTokenUsage>>;
     let uploadQuota = null as Awaited<ReturnType<typeof DatabaseService.getUploadQuota>>;
-
     for (let attempt = 0; attempt < 2; attempt++) {
       [tokenUsage, uploadQuota] = await Promise.all([
         DatabaseService.getTokenUsage(user.id, currentMonth),
@@ -40,17 +51,14 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
       if (tokenUsage && uploadQuota) break;
       await sleep(150);
     }
-
     if (!tokenUsage) throw new Error('Missing token usage record. Please try again.');
     if (!uploadQuota) throw new Error('Missing upload quota record. Please try again.');
-
     if (isFileUpload && uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
       throw new Error('Upload quota exceeded. Please upgrade or wait until next month.');
     }
     if (tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
       throw new Error('Token quota exceeded. Please upgrade or wait until next month.');
     }
-
     return { tokenUsage, uploadQuota };
   };
 
@@ -59,21 +67,17 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
       setError('Please enter some text');
       return;
     }
-
     setError('');
     setLoading(true);
-
     try {
       await checkQuotas(false);
-
+      const { OpenAITextService } = await getServices();
       const result = await OpenAITextService.parseNaturalLanguage(textInput);
-
       if (result.events.length === 0) {
-        setError('No events found. Please try rephrasing your input.');
+        setError('No events found. Please rephrase your input.');
         setLoading(false);
         return;
       }
-
       onEventsExtracted(result.events);
       setTextInput('');
     } catch (err: any) {
@@ -88,21 +92,17 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
       setError('Please select a file');
       return;
     }
-
     setError('');
     setLoading(true);
-
     try {
       await checkQuotas(true);
-
+      const { OpenAIFilesService } = await getServices();
       const result = await OpenAIFilesService.parseFile(selectedFile);
-
       if (result.events.length === 0) {
         setError('No events found in the file.');
         setLoading(false);
         return;
       }
-
       onEventsExtracted(result.events);
       setSelectedFile(null);
     } catch (err: any) {
@@ -154,7 +154,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
           className="pill-input"
           disabled={loading}
         />
-
         <button
           className="pill-plus-btn"
           onClick={() => setShowPopup(!showPopup)}
@@ -165,7 +164,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
         </button>
-
         <button
           className="pill-submit-btn"
           onClick={handleTextSubmit}
@@ -180,31 +178,21 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
             </svg>
           )}
         </button>
-
         {showPopup && (
           <div className="input-popup">
-            <button
-              className="popup-option"
-              onClick={() => handlePopupOption('document')}
-            >
+            <button className="popup-option" onClick={() => handlePopupOption('document')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Upload Document
             </button>
-            <button
-              className="popup-option"
-              onClick={() => handlePopupOption('picture')}
-            >
+            <button className="popup-option" onClick={() => handlePopupOption('picture')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               Upload Picture
             </button>
-            <button
-              className="popup-option"
-              onClick={() => handlePopupOption('camera')}
-            >
+            <button className="popup-option" onClick={() => handlePopupOption('camera')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -214,7 +202,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
           </div>
         )}
       </div>
-
       <input
         type="file"
         id="file-input-hidden"
@@ -223,7 +210,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         className="file-input-hidden"
         style={{ display: 'none' }}
       />
-
       <input
         type="file"
         id="camera-input-hidden"
@@ -233,7 +219,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         className="file-input-hidden"
         style={{ display: 'none' }}
       />
-
       {error && <div className="input-error">{error}</div>}
     </div>
   );
