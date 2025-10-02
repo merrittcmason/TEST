@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { OpenAIService, type ParsedEvent } from '../services/openai';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase'; // ✅ needed for RPC call
+import { supabase } from '../lib/supabase'; // ✅ for RPC call
 import './EventInput.css';
 
 interface EventInputProps {
@@ -17,24 +17,19 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Simple sleep for brief retries
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
-
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
 
-    // ✅ Ensure rows exist for this month (server-side provisioning)
-    const { error: rpcErr } = await supabase.rpc('ensure_current_quota');
-    if (rpcErr) {
-      // Surface RPC error cleanly
-      throw new Error(`Quota provisioning failed: ${rpcErr.message}`);
-    }
+    // ✅ Ensure profile + quotas exist
+    const { error: rpcError } = await supabase.rpc('ensure_profile_and_current_quota');
+    if (rpcError) throw new Error(`Quota provisioning failed: ${rpcError.message}`);
 
-    // Read quotas; brief retry in case of read-after-write lag
-    let tokenUsage = null as Awaited<ReturnType<typeof DatabaseService.getTokenUsage>>;
-    let uploadQuota = null as Awaited<ReturnType<typeof DatabaseService.getUploadQuota>>;
+    // Read quotas (with a small retry in case of race)
+    let tokenUsage = null;
+    let uploadQuota = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       [tokenUsage, uploadQuota] = await Promise.all([
@@ -42,23 +37,17 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         DatabaseService.getUploadQuota(user.id, currentMonth),
       ]);
       if (tokenUsage && uploadQuota) break;
-      await sleep(150); // tiny backoff
+      await sleep(150);
     }
 
-    if (!tokenUsage) {
-      throw new Error('Missing token usage record. Please try again in a moment.');
-    }
-    if (!uploadQuota) {
-      throw new Error('Missing upload quota record. Please try again in a moment.');
-    }
+    if (!tokenUsage) throw new Error('Missing token usage record. Please try again.');
+    if (!uploadQuota) throw new Error('Missing upload quota record. Please try again.');
 
-    if (isFileUpload) {
-      if (uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
-        throw new Error('Upload quota exceeded. Please upgrade your plan or wait until next month.');
-      }
+    if (isFileUpload && uploadQuota.uploads_used >= uploadQuota.uploads_limit) {
+      throw new Error('Upload quota exceeded. Please upgrade or wait until next month.');
     }
     if (tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
-      throw new Error('Token quota exceeded. Please upgrade your plan or wait until next month.');
+      throw new Error('Token quota exceeded. Please upgrade or wait until next month.');
     }
 
     return { tokenUsage, uploadQuota };
@@ -75,7 +64,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
 
     try {
       await checkQuotas(false);
-
       const result = await OpenAIService.parseNaturalLanguage(textInput);
 
       if (result.events.length === 0) {
@@ -84,7 +72,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      // No client writes to token_usage/upload_quotas — server manages those.
+      // ✅ No client writes — quotas update server-side
       onEventsExtracted(result.events);
       setTextInput('');
     } catch (err: any) {
@@ -105,7 +93,6 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
 
     try {
       await checkQuotas(true);
-
       const result = await OpenAIService.parseFileContent(selectedFile);
 
       if (result.events.length === 0) {
@@ -114,7 +101,7 @@ export function EventInput({ onEventsExtracted }: EventInputProps) {
         return;
       }
 
-      // No client writes to token_usage/upload_quotas — server manages those.
+      // ✅ No client writes — quotas update server-side
       onEventsExtracted(result.events);
       setSelectedFile(null);
     } catch (err: any) {
