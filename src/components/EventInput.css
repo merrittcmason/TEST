@@ -164,7 +164,10 @@
   .input-popup {
     left: 0;
   }
-  .pill-full-btn {
+  :root { --highlight-color: black; }
+@media (prefers-color-scheme: dark) { :root { --highlight-color: white; } }
+
+.pill-full-btn {
   width: 100%;
   display: block;
   border: 2px solid var(--border-color);
@@ -177,10 +180,14 @@
   text-align: center;
   transition: all 0.2s ease;
 }
-.pill-full-btn:hover:not(:disabled) {
-  background-color: var(--primary);
-  color: white;
+
+.pill-full-btn:hover:not(:disabled),
+.pill-full-btn:focus-visible {
+  background-color: var(--highlight-color);
+  color: var(--bg-primary);
+  outline: none;
 }
+
 .pill-full-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
