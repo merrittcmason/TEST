@@ -24,6 +24,9 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(initialEvent || null);
   const [showDayDetail, setShowDayDetail] = useState(!!initialEvent);
   const [dayEvents, setDayEvents] = useState<Event[]>([]);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', date: '', time: '', tag: '', all_day: false });
+  const [saving, setSaving] = useState(false);
 
   const handleEventClick = (event: Event) => {
     setSelectedEvent(event);
@@ -60,6 +63,79 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
 
   const handleCloseDayDetail = () => {
     setShowDayDetail(false);
+  };
+
+  const handleEditEvent = (event: Event) => {
+    setEditingEvent(event);
+    setEditForm({
+      name: event.name,
+      date: event.date,
+      time: event.time || '',
+      tag: event.tag || '',
+      all_day: event.all_day || false,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingEvent) return;
+
+    setSaving(true);
+    try {
+      await DatabaseService.updateEvent(editingEvent.id, {
+        name: editForm.name,
+        date: editForm.date,
+        time: editForm.time || null,
+        tag: editForm.tag || null,
+        all_day: editForm.all_day,
+      });
+
+      setEditingEvent(null);
+
+      if (showDayDetail) {
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const events = await DatabaseService.getEvents(user!.id, dateStr, dateStr);
+        const sortedEvents = events.sort((a, b) => {
+          if (a.all_day && !b.all_day) return 1;
+          if (!a.all_day && b.all_day) return -1;
+          if (!a.time || !b.time) return 0;
+          return a.time.localeCompare(b.time);
+        });
+        setDayEvents(sortedEvents);
+      }
+    } catch (error) {
+      console.error('Failed to update event:', error);
+      alert('Failed to update event');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!editingEvent) return;
+    if (!confirm('Are you sure you want to delete this event?')) return;
+
+    setSaving(true);
+    try {
+      await DatabaseService.deleteEvent(editingEvent.id);
+      setEditingEvent(null);
+
+      if (showDayDetail) {
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const events = await DatabaseService.getEvents(user!.id, dateStr, dateStr);
+        const sortedEvents = events.sort((a, b) => {
+          if (a.all_day && !b.all_day) return 1;
+          if (!a.all_day && b.all_day) return -1;
+          if (!a.time || !b.time) return 0;
+          return a.time.localeCompare(b.time);
+        });
+        setDayEvents(sortedEvents);
+      }
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+      alert('Failed to delete event');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -119,7 +195,7 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
                       </button>
                       <button
                         className="btn-icon"
-                        onClick={() => {}}
+                        onClick={() => handleEditEvent(event)}
                         title="Edit event"
                       >
                         <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,6 +236,101 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {editingEvent && (
+        <div className="event-modal-overlay" onClick={() => !saving && setEditingEvent(null)}>
+          <div className="event-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="edit-modal-header">
+              <h3>Edit Event</h3>
+              <button className="modal-close" onClick={() => setEditingEvent(null)}>✕</button>
+            </div>
+
+            <div className="edit-form">
+              <div className="form-group">
+                <label htmlFor="edit-name">Event Name</label>
+                <input
+                  id="edit-name"
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  placeholder="Event name"
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="edit-date">Date</label>
+                  <input
+                    id="edit-date"
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="edit-time">Time</label>
+                  <input
+                    id="edit-time"
+                    type="time"
+                    value={editForm.time}
+                    onChange={(e) => setEditForm({ ...editForm, time: e.target.value })}
+                    disabled={editForm.all_day}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-tag">Tag</label>
+                <input
+                  id="edit-tag"
+                  type="text"
+                  value={editForm.tag}
+                  onChange={(e) => setEditForm({ ...editForm, tag: e.target.value })}
+                  placeholder="Optional tag"
+                />
+              </div>
+
+              <div className="form-group-checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={editForm.all_day}
+                    onChange={(e) => setEditForm({ ...editForm, all_day: e.target.checked, time: e.target.checked ? '' : editForm.time })}
+                  />
+                  All day event
+                </label>
+              </div>
+
+              <div className="edit-actions">
+                <button
+                  onClick={handleDeleteEvent}
+                  className="btn btn-danger"
+                  disabled={saving}
+                >
+                  {saving ? 'Deleting...' : 'Delete'}
+                </button>
+                <div className="edit-actions-right">
+                  <button
+                    onClick={() => setEditingEvent(null)}
+                    className="btn btn-secondary"
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="btn btn-primary"
+                    disabled={saving || !editForm.name || !editForm.date}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

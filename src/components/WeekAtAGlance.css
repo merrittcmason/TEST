@@ -75,6 +75,7 @@
   border-right: 2px solid var(--border-color);
   background-color: var(--bg-primary);
   position: relative;
+  min-height: 1200px;
 }
 
 .hour-marker-compact {
@@ -142,6 +143,7 @@
     transparent 50px
   );
   background-size: 100% 50px;
+  min-height: 1200px;
 }
 
 .no-events-message {
