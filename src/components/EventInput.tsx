@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import type { ParsedEvent } from '../services/openaiStandard';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +9,7 @@ type Mode = 'standard' | 'education' | 'work' | 'enterprise';
 
 interface EventInputProps {
   onEventsExtracted: (events: ParsedEvent[]) => void;
+  onResumeDrafts?: (drafts: ParsedEvent[]) => void;
   mode?: Mode;
 }
 
@@ -24,7 +25,7 @@ const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
   enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>,
 };
 
-export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputProps) {
+export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard' }: EventInputProps) {
   const { user } = useAuth();
   const [textInput, setTextInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -32,7 +33,7 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
   const [error, setError] = useState('');
   const [showPopup, setShowPopup] = useState(false);
   const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
-  const popupRef = useRef<HTMLDivElement | null>(null);
+  const [hasDrafts, setHasDrafts] = useState(false);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const getServices = () => {
@@ -41,21 +42,19 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
     return loader();
   };
 
+  const refreshDraftsFlag = async () => {
+    if (!user) return;
+    try {
+      const drafts = await DatabaseService.getDraftEvents(user.id);
+      setHasDrafts(Array.isArray(drafts) && drafts.length > 0);
+    } catch {
+      setHasDrafts(false);
+    }
+  };
+
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent | TouchEvent) {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setShowPopup(false);
-      }
-    }
-    if (showPopup) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside, { passive: true });
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, [showPopup]);
+    refreshDraftsFlag();
+  }, [user]);
 
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
@@ -100,6 +99,7 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
       }
       onEventsExtracted(result.events);
       setTextInput('');
+      await refreshDraftsFlag();
     } catch (err: any) {
       setError(err.message || 'Failed to process text');
     } finally {
@@ -107,67 +107,126 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
     }
   };
 
-const handleFileSubmit = async (fileArg?: File) => {
-  const file = fileArg ?? selectedFile;
-  if (!file) {
-    setError('Please select a file');
-    return;
-  }
-
-  setError('');
-  setLoading(true);
-
-  try {
-    await checkQuotas(true);
-    const { OpenAIFilesService } = await getServices();
-    const result = await OpenAIFilesService.parseFile(file);
-
-    if (result.events.length === 0) {
-      setError('No events found in the file.');
-      setLoading(false);
+  const handleFileSubmit = async () => {
+    if (!selectedFile) {
+      setError('Please select a file');
       return;
     }
-
-    onEventsExtracted(result.events);
-    setSelectedFile(null);
-  } catch (err: any) {
-    setError(err.message || 'Failed to process file');
-  } finally {
-    setLoading(false);
-  }
-};
-
-const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setError('File size must be less than 10MB');
-      e.currentTarget.value = '';
-      return;
-    }
-    setSelectedFile(file);
     setError('');
+    setLoading(true);
+    try {
+      await checkQuotas(true);
+      const { OpenAIFilesService } = await getServices();
+      const result = await OpenAIFilesService.parseFile(selectedFile);
+      if (result.events.length === 0) {
+        setError('No events found in the file.');
+        setLoading(false);
+        return;
+      }
+      onEventsExtracted(result.events);
+      setSelectedFile(null);
+      await refreshDraftsFlag();
+    } catch (err: any) {
+      setError(err.message || 'Failed to process file');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        setError('File size must be less than 10MB');
+        return;
+      }
+      setSelectedFile(file);
+      setError('');
+      setShowPopup(false);
+      handleFileSubmit();
+    }
+  };
+
+  const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
+    setCaptureMode(option);
     setShowPopup(false);
-    handleFileSubmit(file);
-    e.currentTarget.value = '';
-  }
-};
-
-
-
-const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
-  setCaptureMode(option);
-  setShowPopup(false);
-  setTimeout(() => {
     if (option === 'document' || option === 'picture') {
       document.getElementById('file-input-hidden')?.click();
     } else if (option === 'camera') {
       document.getElementById('camera-input-hidden')?.click();
     }
-  }, 0);
-};
+  };
 
+  const handleResumeDrafts = async () => {
+    if (!user) {
+      setError('Not authenticated');
+      return;
+    }
+    try {
+      setLoading(true);
+      const drafts = await DatabaseService.getDraftEvents(user.id);
+      const mapped: ParsedEvent[] = (drafts || []).map((d: any) => ({
+        event_name: d.event_name ?? d.name ?? '',
+        event_date: d.event_date ?? d.date ?? '',
+        event_time: d.event_time ?? d.time ?? null,
+        event_tag: d.event_tag ?? d.tag ?? null,
+        event_label: d.label ?? null,
+      }));
+      if (mapped.length === 0) {
+        setHasDrafts(false);
+        setError('No draft events to resume.');
+        return;
+      }
+      if (onResumeDrafts) {
+        onResumeDrafts(mapped);
+      } else {
+        setError('No resume handler provided.');
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load drafts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (hasDrafts) {
+    return (
+      <div className="event-input">
+        <div className="pill-input-container">
+          <button
+            className="pill-plus-btn"
+            onClick={handleResumeDrafts}
+            disabled={loading}
+            title="Finish Creating Events"
+          >
+            ✓
+          </button>
+          <input
+            type="text"
+            value="Finish Creating Events"
+            readOnly
+            className="pill-input"
+          />
+          <button
+            className="pill-submit-btn"
+            onClick={handleResumeDrafts}
+            disabled={loading}
+            title="Finish Creating Events"
+          >
+            {loading ? (
+              <div className="loading-spinner-small" />
+            ) : (
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            )}
+          </button>
+        </div>
+        {error && <div className="input-error">{error}</div>}
+      </div>
+    );
+  }
 
   return (
     <div className="event-input">
@@ -211,7 +270,7 @@ const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
           )}
         </button>
         {showPopup && (
-          <div className="input-popup" ref={popupRef}>
+          <div className="input-popup">
             <button className="popup-option" onClick={() => handlePopupOption('document')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
