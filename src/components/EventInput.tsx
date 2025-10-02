@@ -156,15 +156,18 @@ const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
 
 
-  const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
-    setCaptureMode(option);
-    setShowPopup(false);
+const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
+  setCaptureMode(option);
+  setShowPopup(false);
+  setTimeout(() => {
     if (option === 'document' || option === 'picture') {
       document.getElementById('file-input-hidden')?.click();
     } else if (option === 'camera') {
       document.getElementById('camera-input-hidden')?.click();
     }
-  };
+  }, 0);
+};
+
 
   return (
     <div className="event-input">
