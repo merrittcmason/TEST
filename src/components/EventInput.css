@@ -1,21 +1,24 @@
+/* ===== Container: no card, no chrome ===== */
 .event-input {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: var(--shadow-sm);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  width: 100%;
 }
 
+/* ===== The pill ===== */
 .pill-input-container {
   position: relative;
   display: flex;
   align-items: center;
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
-  border-radius: 50px;
-  padding: 4px 4px 4px 20px;
+  border-radius: 999px;
+  /* pad left/right to clear the in-pill buttons */
+  padding: 4px 56px 4px 56px;
   transition: all 0.2s ease;
-  gap: 8px;
 }
 
 .pill-input-container:focus-within {
@@ -23,14 +26,15 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* ===== Text input inside the pill ===== */
 .pill-input {
   flex: 1;
   border: none;
-  background: none;
+  background: transparent;
   outline: none;
   font-size: 1rem;
   color: var(--text-primary);
-  padding: 12px 8px;
+  padding: 12px 0; /* vertical only; horizontal handled by container padding */
   min-width: 0;
 }
 
@@ -38,44 +42,46 @@
   color: var(--text-secondary);
 }
 
+/* ===== Icon buttons INSIDE the pill (plus on left, arrow on right) ===== */
 .pill-plus-btn,
 .pill-submit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
   width: 40px;
   height: 40px;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  flex-shrink: 0;
   background-color: var(--bg-hover);
   color: var(--text-primary);
 }
+
+.pill-plus-btn { left: 8px; }
+.pill-submit-btn { right: 8px; }
 
 .pill-plus-btn:hover:not(:disabled),
 .pill-submit-btn:hover:not(:disabled) {
   background-color: var(--primary);
   color: white;
-  transform: scale(1.05);
+  transform: translateY(-50%) scale(1.05);
 }
 
-.pill-submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+.pill-submit-btn:disabled,
 .pill-plus-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
+/* ===== File upload popup anchored to the pill ===== */
 .input-popup {
   position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 8px;
+  top: calc(100% + 8px);
+  left: 8px;                 /* near the plus */
+  margin: 0;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -115,6 +121,7 @@
   color: var(--primary);
 }
 
+/* ===== Small spinner for the arrow spot ===== */
 .loading-spinner-small {
   width: 20px;
   height: 20px;
@@ -124,76 +131,36 @@
   animation: spin 0.6s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
+/* ===== Error ===== */
 .input-error {
   padding: 12px;
   background-color: var(--error-bg);
   color: var(--error);
   border-radius: 8px;
   font-size: 0.875rem;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
+/* ===== Animations ===== */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Responsive tweaks ===== */
 @media (max-width: 768px) {
-  .event-input {
-    padding: 16px;
-  }
-
-  .pill-input-container {
-    padding: 4px 4px 4px 16px;
-  }
-
-  .pill-input {
-    font-size: 0.95rem;
-    padding: 10px 6px;
-  }
-
   .pill-plus-btn,
   .pill-submit-btn {
     width: 36px;
     height: 36px;
   }
-
-  .input-popup {
-    right: auto;
-    left: 0;
+  .pill-input-container {
+    padding: 4px 50px 4px 50px; /* slightly tighter on mobile */
   }
-  /* EventInput.css */
-.pill-input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px; /* tweak spacing as you like */
-}
-
-.left-of-pill {
-  /* if your previous .pill-plus-btn assumed absolute positioning inside the pill, reset it */
-  position: static;
-  flex: 0 0 auto;
-}
-
-.pill-input-container {
-  flex: 1 1 auto;
-  display: flex;
-}
-
-.pill-input {
-  width: 100%;
-}
-
+  .input-popup {
+    left: 0; /* anchor flush to left on small screens */
+  }
 }
