@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ParsedEvent } from '../services/openaiStandard';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,6 +32,7 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
   const [error, setError] = useState('');
   const [showPopup, setShowPopup] = useState(false);
   const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const getServices = () => {
@@ -39,6 +40,22 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
     if (typeof loader !== 'function') return serviceLoaders.standard();
     return loader();
   };
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setShowPopup(false);
+      }
+    }
+    if (showPopup) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showPopup]);
 
   const checkQuotas = async (isFileUpload: boolean) => {
     if (!user) throw new Error('Not authenticated');
@@ -182,7 +199,7 @@ export function EventInput({ onEventsExtracted, mode = 'standard' }: EventInputP
           )}
         </button>
         {showPopup && (
-          <div className="input-popup">
+          <div className="input-popup" ref={popupRef}>
             <button className="popup-option" onClick={() => handlePopupOption('document')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
