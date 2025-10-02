@@ -22,15 +22,24 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-/** --- Safe JSON extraction helper --- */
+/** --- Safe JSON extraction helper (hardened) --- */
 function safeJsonParse(content: string): any {
   try {
     content = content.replace(/```(json)?/g, "").trim();
+
+    // Fix common issues: trailing commas in objects/arrays
+    content = content
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]");
+
     return JSON.parse(content);
   } catch {
     const match = content.match(/\{[\s\S]*\}/);
     if (match) {
-      return JSON.parse(match[0]);
+      let jsonStr = match[0]
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*]/g, "]");
+      return JSON.parse(jsonStr);
     }
     throw new Error("No valid JSON found in AI response");
   }
@@ -81,7 +90,7 @@ export class OpenAIService {
   static async parseNaturalLanguage(text: string): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured");
 
-    const systemPrompt = `You are a calendar event parser. Extract events from natural language and return them as a JSON array.
+    const systemPrompt = `You are a calendar event parser. Extract events from natural language and return them as JSON.
 
 Rules:
 - If year missing, use current year (${new Date().getFullYear()})
