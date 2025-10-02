@@ -21,7 +21,7 @@ export function SubscriptionPage({ onNavigate }: SubscriptionPageProps) {
     },
     {
       name: 'Student Pack',
-      price: '$4.99',
+      price: '$10',
       period: 'one-time',
       features: [
         '500 AI tokens per month',
@@ -33,7 +33,7 @@ export function SubscriptionPage({ onNavigate }: SubscriptionPageProps) {
     },
     {
       name: 'Pro',
-      price: '$9.99',
+      price: '$20',
       period: 'per month',
       features: [
         '5,000 AI tokens per month',
