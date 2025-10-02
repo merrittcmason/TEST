@@ -82,8 +82,8 @@
 }
 
 .input-popup {
-  position: top;
-  top: calc(100% + 8px);
+  position: absolute;
+  bottom: calc(100% + 8px);
   left: 8px;
   margin: 0;
   background-color: var(--bg-secondary);
