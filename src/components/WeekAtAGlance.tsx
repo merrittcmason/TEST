@@ -1,4 +1,4 @@
-import { format, addDays, subDays, startOfDay } from 'date-fns';
+import { format, startOfDay } from 'date-fns';
 import { useEffect, useState } from 'react';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
@@ -8,98 +8,100 @@ import './WeekAtAGlance.css';
 type Event = Database['public']['Tables']['events']['Row'];
 
 interface WeekAtAGlanceProps {
-  onDateClick: (date: Date) => void;
+  onEventClick: (date: Date, event: Event) => void;
 }
 
-export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
+export function WeekAtAGlance({ onEventClick }: WeekAtAGlanceProps) {
   const { user } = useAuth();
-  const [dates, setDates] = useState<Date[]>([]);
-  const [eventsMap, setEventsMap] = useState<Map<string, Event[]>>(new Map());
+  const [todayEvents, setTodayEvents] = useState<Event[]>([]);
 
   useEffect(() => {
-    const today = startOfDay(new Date());
-    const generatedDates: Date[] = [];
-
-    for (let i = -2; i <= 2; i++) {
-      generatedDates.push(i < 0 ? subDays(today, Math.abs(i)) : addDays(today, i));
-    }
-
-    setDates(generatedDates);
-  }, []);
-
-  useEffect(() => {
-    if (!user || dates.length === 0) return;
+    if (!user) return;
 
     const loadEvents = async () => {
       try {
-        const startDate = format(dates[0], 'yyyy-MM-dd');
-        const endDate = format(dates[dates.length - 1], 'yyyy-MM-dd');
-        const events = await DatabaseService.getEvents(user.id, startDate, endDate);
+        const today = startOfDay(new Date());
+        const dateStr = format(today, 'yyyy-MM-dd');
+        const events = await DatabaseService.getEvents(user.id, dateStr, dateStr);
 
-        const eventsByDate = new Map<string, Event[]>();
-        events.forEach(event => {
-          const dateKey = event.date;
-          if (!eventsByDate.has(dateKey)) {
-            eventsByDate.set(dateKey, []);
-          }
-          eventsByDate.get(dateKey)!.push(event);
+        const sortedEvents = events.sort((a, b) => {
+          if (a.all_day && !b.all_day) return -1;
+          if (!a.all_day && b.all_day) return 1;
+          if (!a.time || !b.time) return 0;
+          return a.time.localeCompare(b.time);
         });
 
-        setEventsMap(eventsByDate);
+        setTodayEvents(sortedEvents);
       } catch (error) {
         console.error('Failed to load events:', error);
       }
     };
 
     loadEvents();
-  }, [user, dates]);
+  }, [user]);
 
-  const isToday = (date: Date) => {
-    const today = startOfDay(new Date());
-    return startOfDay(date).getTime() === today.getTime();
+  const getEventPosition = (time: string | null) => {
+    if (!time) return null;
+    const [hours, minutes] = time.split(':').map(Number);
+    const totalMinutes = hours * 60 + minutes;
+    return (totalMinutes / (24 * 60)) * 100;
   };
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const today = new Date();
 
   return (
     <div className="week-at-a-glance">
-      <h2 className="section-title">Week at a Glance</h2>
-      <div className="week-dates">
-        {dates.map((date, index) => {
-          const dateKey = format(date, 'yyyy-MM-dd');
-          const dayEvents = eventsMap.get(dateKey) || [];
-          const today = isToday(date);
+      <h2 className="section-title">Today's Schedule</h2>
+      <div className="today-schedule-card">
+        <div className="schedule-header">
+          <div className="schedule-date">
+            <div className="date-day">{format(today, 'EEEE')}</div>
+            <div className="date-number">{format(today, 'MMMM d, yyyy')}</div>
+          </div>
+          <div className="event-count">
+            {todayEvents.length} {todayEvents.length === 1 ? 'event' : 'events'}
+          </div>
+        </div>
 
-          return (
-            <button
-              key={index}
-              className={`day-card ${today ? 'today' : ''}`}
-              onClick={() => onDateClick(date)}
-            >
-              <div className="day-header">
-                <div className="day-name">{format(date, 'EEE')}</div>
-                <div className="day-number">{format(date, 'd')}</div>
-                {today && <div className="today-badge">Today</div>}
+        <div className="schedule-timeline">
+          <div className="timeline-hours">
+            {hours.map(hour => (
+              <div key={hour} className="hour-marker">
+                <span className="hour-label">
+                  {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                </span>
+                <div className="hour-line" />
               </div>
+            ))}
+          </div>
 
-              <div className="day-events-list">
-                {dayEvents.length === 0 ? (
-                  <div className="no-events">No events</div>
-                ) : (
-                  dayEvents.slice(0, 3).map(event => (
-                    <div key={event.id} className="event-item">
-                      <div className="event-time">
-                        {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
-                      </div>
-                      <div className="event-name">{event.name}</div>
+          <div className="timeline-events">
+            {todayEvents.length === 0 ? (
+              <div className="no-events-message">
+                No events scheduled for today
+              </div>
+            ) : (
+              todayEvents.map(event => {
+                const position = getEventPosition(event.time);
+                return (
+                  <button
+                    key={event.id}
+                    className="timeline-event"
+                    style={position !== null ? { top: `${position}%` } : undefined}
+                    onClick={() => onEventClick(today, event)}
+                  >
+                    <div className="event-time-badge">
+                      {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
                     </div>
-                  ))
-                )}
-                {dayEvents.length > 3 && (
-                  <div className="more-events">+{dayEvents.length - 3} more</div>
-                )}
-              </div>
-            </button>
-          );
-        })}
+                    <div className="event-name-display">{event.name}</div>
+                    {event.tag && <div className="event-tag-badge">{event.tag}</div>}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

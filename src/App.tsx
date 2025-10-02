@@ -11,6 +11,7 @@ import { AccountPage } from './pages/AccountPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
 import { ExportPage } from './pages/ExportPage';
 import type { ParsedEvent } from './services/openai';
+import type { Database } from './lib/supabase';
 import { DatabaseService } from './services/database';
 import './styles/theme.css';
 
@@ -30,6 +31,7 @@ const supabase = createClient(
 );
 
 type Page = 'landing' | 'calendar' | 'settings' | 'account' | 'subscription' | 'export' | 'eventConfirmation';
+type Event = Database['public']['Tables']['events']['Row'];
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
@@ -37,6 +39,7 @@ function AppContent() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
 
@@ -86,6 +89,13 @@ function AppContent() {
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
+    setSelectedEvent(null);
+    setCurrentPage('calendar');
+  };
+
+  const handleEventClick = (date: Date, event: Event) => {
+    setSelectedDate(date);
+    setSelectedEvent(event);
     setCurrentPage('calendar');
   };
 
@@ -143,6 +153,7 @@ function AppContent() {
     return (
       <CalendarPage
         initialDate={selectedDate || undefined}
+        selectedEvent={selectedEvent}
         onNavigate={handleNavigate}
         onEventsExtracted={handleEventsExtracted}
       />
@@ -169,6 +180,7 @@ function AppContent() {
     <LandingPage
       onNavigate={handleNavigate}
       onDateClick={handleDateClick}
+      onEventClick={handleEventClick}
     />
   );
 }
