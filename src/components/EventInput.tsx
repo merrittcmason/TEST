@@ -1,31 +1,31 @@
+You said:
 import { useState } from 'react';
 import type { ParsedEvent } from '../services/openaiStandard'; // canonical type source
+// NOTE: services are now loaded per-mode via dynamic import (see getServices below)
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'; // for RPC call
 import './EventInput.css';
 
 type Mode = 'standard' | 'education' | 'work' | 'enterprise';
 
 interface EventInputProps {
   onEventsExtracted: (events: ParsedEvent[]) => void;
+  /** Current app mode drives which OpenAI service (prompts) are used */
   mode: Mode;
 }
 
 type ServiceModule = {
-  OpenAITextService: {
-    parseNaturalLanguage: (text: string) => Promise<{ events: ParsedEvent[]; tokensUsed: number }>;
-  };
-  OpenAIFilesService: {
-    parseFile: (file: File) => Promise<{ events: ParsedEvent[]; tokensUsed: number }>;
-  };
+  OpenAITextService: { parseNaturalLanguage: (text: string) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
+  OpenAIFilesService: { parseFile: (file: File) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
 };
 
+// simple loader map for code-split per-mode services
 const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
   standard: () => import('../services/openaiStandard') as unknown as Promise<ServiceModule>,
   education: () => import('../services/openaiEducation') as unknown as Promise<ServiceModule>,
   work: () => import('../services/openaiWork') as unknown as Promise<ServiceModule>,
-  enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>,
+  enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>, // TBD uses standard prompts
 };
 
 export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
@@ -35,6 +35,7 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPopup, setShowPopup] = useState(false);
+  const [captureMode, setCaptureMode] = useState<'document' | 'picture' | 'camera' | null>(null);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const getServices = () => serviceLoaders[mode]();
@@ -43,9 +44,11 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
     if (!user) throw new Error('Not authenticated');
     const currentMonth = new Date().toISOString().slice(0, 7) + '-01';
 
+    // Ensure profile + current-month quotas exist (server-side)
     const { error: rpcError } = await supabase.rpc('ensure_profile_and_current_quota');
-    if (rpcError) throw new Error(`Quota provisioning failed: ${rpcError.message}`);
+    if (rpcError) throw new Error(Quota provisioning failed: ${rpcError.message});
 
+    // Read quotas (tiny retry to avoid race)
     let tokenUsage = null as Awaited<ReturnType<typeof DatabaseService.getTokenUsage>>;
     let uploadQuota = null as Awaited<ReturnType<typeof DatabaseService.getUploadQuota>>;
 
@@ -67,6 +70,8 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
     if (tokenUsage.tokens_used >= tokenUsage.tokens_limit) {
       throw new Error('Token quota exceeded. Please upgrade or wait until next month.');
     }
+
+    return { tokenUsage, uploadQuota };
   };
 
   const handleTextSubmit = async () => {
@@ -74,16 +79,23 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
       setError('Please enter some text');
       return;
     }
+
     setError('');
     setLoading(true);
+
     try {
       await checkQuotas(false);
+
+      // Load the correct mode's text service
       const { OpenAITextService } = await getServices();
       const result = await OpenAITextService.parseNaturalLanguage(textInput);
+
       if (result.events.length === 0) {
         setError('No events found. Please try rephrasing your input.');
+        setLoading(false);
         return;
       }
+
       onEventsExtracted(result.events);
       setTextInput('');
     } catch (err: any) {
@@ -98,16 +110,23 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
       setError('Please select a file');
       return;
     }
+
     setError('');
     setLoading(true);
+
     try {
       await checkQuotas(true);
+
+      // Load the correct mode's files service
       const { OpenAIFilesService } = await getServices();
       const result = await OpenAIFilesService.parseFile(selectedFile);
+
       if (result.events.length === 0) {
         setError('No events found in the file.');
+        setLoading(false);
         return;
       }
+
       onEventsExtracted(result.events);
       setSelectedFile(null);
     } catch (err: any) {
@@ -119,71 +138,63 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setError('File size must be less than 10MB');
-      return;
+    if (file) {
+      const maxSize = 10 * 1024 * 1024;
+      if (file.size > maxSize) {
+        setError('File size must be less than 10MB');
+        return;
+      }
+      setSelectedFile(file);
+      setError('');
+      setShowPopup(false);
+      handleFileSubmit();
     }
-    setSelectedFile(file);
-    setError('');
-    setShowPopup(false);
-    // Kick off processing after selection
-    handleFileSubmit();
   };
 
   const handlePopupOption = (option: 'document' | 'picture' | 'camera') => {
+    setCaptureMode(option);
     setShowPopup(false);
-    if (option === 'document') {
-      document.getElementById('doc-input-hidden')?.click();
-    } else if (option === 'picture') {
-      document.getElementById('image-input-hidden')?.click();
-    } else {
+    if (option === 'document' || option === 'picture') {
+      document.getElementById('file-input-hidden')?.click();
+    } else if (option === 'camera') {
       document.getElementById('camera-input-hidden')?.click();
     }
   };
 
   return (
-    <div className="event-input"> {/* no outer card */}
-      <div className="pill">
-        {/* Left: plus inside pill */}
-        <button
-          className="pill-icon-btn pill-left"
-          onClick={() => setShowPopup((v) => !v)}
+    <div className="event-input">
+      <div className="pill-input-container">
+        <input
+          type="text"
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && textInput.trim()) {
+              e.preventDefault();
+              handleTextSubmit();
+            }
+          }}
+          placeholder="Start Typing"
+          className="pill-input"
           disabled={loading}
-          aria-label="Add from file or camera"
+        />
+
+        <button
+          className="pill-plus-btn"
+          onClick={() => setShowPopup(!showPopup)}
+          disabled={loading}
           title="Add from file or camera"
-          type="button"
         >
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
         </button>
 
-        {/* Middle: text input with left/right padding to clear icons */}
-        <input
-          type="text"
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && textInput.trim() && !loading) {
-              e.preventDefault();
-              handleTextSubmit();
-            }
-          }}
-          placeholder="Start Typing"
-          className="pill-input-field"
-          disabled={loading}
-        />
-
-        {/* Right: arrow inside pill */}
         <button
-          className="pill-icon-btn pill-right"
+          className="pill-submit-btn"
           onClick={handleTextSubmit}
           disabled={loading || !textInput.trim()}
-          aria-label="Create event"
           title="Create event"
-          type="button"
         >
           {loading ? (
             <div className="loading-spinner-small" />
@@ -194,22 +205,30 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
           )}
         </button>
 
-        {/* Popup anchored to pill (absolute) */}
         {showPopup && (
-          <div className="input-popup anchored">
-            <button className="popup-option" onClick={() => handlePopupOption('picture')}>
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Upload Photo
-            </button>
-            <button className="popup-option" onClick={() => handlePopupOption('document')}>
+          <div className="input-popup">
+            <button
+              className="popup-option"
+              onClick={() => handlePopupOption('document')}
+            >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Upload Document
             </button>
-            <button className="popup-option" onClick={() => handlePopupOption('camera')}>
+            <button
+              className="popup-option"
+              onClick={() => handlePopupOption('picture')}
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Upload Picture
+            </button>
+            <button
+              className="popup-option"
+              onClick={() => handlePopupOption('camera')}
+            >
               <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -220,23 +239,15 @@ export function EventInput({ onEventsExtracted, mode }: EventInputProps) {
         )}
       </div>
 
-      {/* Hidden inputs — fixed accept attributes (no switching bug) */}
       <input
         type="file"
-        id="doc-input-hidden"
-        accept=".pdf,.txt,.doc,.docx,.xlsx,.xls,.csv"
+        id="file-input-hidden"
+        accept={captureMode === 'document' ? '.pdf,.txt,.doc,.docx,.xlsx,.xls,.csv' : 'image/*'}
         onChange={handleFileChange}
         className="file-input-hidden"
         style={{ display: 'none' }}
       />
-      <input
-        type="file"
-        id="image-input-hidden"
-        accept="image/*"
-        onChange={handleFileChange}
-        className="file-input-hidden"
-        style={{ display: 'none' }}
-      />
+
       <input
         type="file"
         id="camera-input-hidden"
