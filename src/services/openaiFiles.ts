@@ -1,6 +1,10 @@
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.js?url";
+
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
 
 export interface ParsedEvent {
   event_name: string;
