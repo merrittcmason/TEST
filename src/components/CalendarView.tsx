@@ -23,6 +23,10 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
 
+  const norm = (s?: any) => (s ?? '').toString().trim();
+  const getLabel = (e: any) => norm(e.label ?? e.tag);
+  const labelKey = (s: string) => s.toLowerCase();
+
   useEffect(() => {
     if (!user) return;
 
@@ -39,12 +43,17 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
         const loadedEvents = await DatabaseService.getEvents(user.id, start, end);
 
         const uniqueLabels = Array.from(
-          new Set(loadedEvents.map(e => (e as any).label).filter((label): label is string => label !== null && label !== ''))
+          new Set(
+            loadedEvents
+              .map(e => getLabel(e))
+              .filter((label): label is string => label !== '')
+          )
         );
         setAvailableLabels(uniqueLabels);
 
         if (selectedLabel) {
-          setEvents(loadedEvents.filter(e => (e as any).label === selectedLabel));
+          const key = labelKey(selectedLabel);
+          setEvents(loadedEvents.filter(e => labelKey(getLabel(e)) === key));
         } else {
           setEvents(loadedEvents);
         }
@@ -108,7 +117,6 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
   };
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
-
   const days = getDaysInMonth();
 
   return (
@@ -116,34 +124,23 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
       <div className="calendar-header">
         <div className="calendar-top-row">
           <div className="calendar-nav">
-            <button onClick={handlePrev} className="btn btn-secondary nav-btn">
-              ←
-            </button>
-            <button
-              className="calendar-month-title-btn"
-              onClick={() => setShowMonthYearPicker(!showMonthYearPicker)}
-            >
+            <button onClick={handlePrev} className="btn btn-secondary nav-btn">←</button>
+            <button className="calendar-month-title-btn" onClick={() => setShowMonthYearPicker(!showMonthYearPicker)}>
               {view === 'week'
                 ? `${format(startOfWeek(currentWeek), 'MMM d')} - ${format(endOfWeek(currentWeek), 'MMM d, yyyy')}`
                 : format(currentMonth, 'MMMM yyyy')}
             </button>
-            <button onClick={handleNext} className="btn btn-secondary nav-btn">
-              →
-            </button>
+            <button onClick={handleNext} className="btn btn-secondary nav-btn">→</button>
           </div>
 
           <div className="calendar-controls">
-            <select
-              className="label-filter"
-              value={selectedLabel}
-              onChange={(e) => setSelectedLabel(e.target.value)}
-            >
+            <select className="label-filter" value={selectedLabel} onChange={(e) => setSelectedLabel(e.target.value)}>
               <option value="">All Labels</option>
               {availableLabels.length === 0 ? (
                 <option disabled>You haven't created any labels yet</option>
               ) : (
                 availableLabels.map(label => (
-                  <option key={label} value={label}>
+                  <option key={labelKey(label)} value={labelKey(label)}>
                     {label}
                   </option>
                 ))
@@ -151,18 +148,9 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
             </select>
 
             <div className="view-switcher">
-              <button
-                className={`view-btn ${view === 'month' ? 'active' : ''}`}
-                onClick={() => setView('month')}
-              >
-                Month
-              </button>
-              <button
-                className={`view-btn ${view === 'week' ? 'active' : ''}`}
-                onClick={() => setView('week')}
-              >
-                Week
-              </button>
+              <button className={`view-btn ${view === 'month' ? 'active' : ''}`} onClick={() => setView('month')}>Month</button>
+              <button className={`view-btn ${view === 'week' ? 'active' : ''}`} onClick={() => setView('week')}>Week</button>
+              <button className="btn btn-tertiary today-btn" onClick={handleToday}>Today</button>
             </div>
           </div>
         </div>
@@ -174,9 +162,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
               onChange={(e) => handleMonthYearChange(parseInt(e.target.value), currentMonth.getMonth())}
             >
               {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 5 + i).map(year => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
+                <option key={year} value={year}>{year}</option>
               ))}
             </select>
             <select
@@ -184,9 +170,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
               onChange={(e) => handleMonthYearChange(currentMonth.getFullYear(), parseInt(e.target.value))}
             >
               {Array.from({ length: 12 }, (_, i) => i).map(month => (
-                <option key={month} value={month}>
-                  {format(new Date(2000, month, 1), 'MMMM')}
-                </option>
+                <option key={month} value={month}>{format(new Date(2000, month, 1), 'MMMM')}</option>
               ))}
             </select>
           </div>
@@ -197,9 +181,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
         <div className="calendar-grid">
           <div className="calendar-weekdays">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="calendar-weekday">
-                {day}
-              </div>
+              <div key={day} className="calendar-weekday">{day}</div>
             ))}
           </div>
 
@@ -228,13 +210,12 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                             onEventClick(event);
                           }}
                         >
-                          {event.name}
+                          <div className="day-event-title">{event.name}</div>
+                          {getLabel(event) && <div className="day-event-label">{getLabel(event)}</div>}
                         </div>
                       ))}
                       {dayEvents.length > 3 && (
-                        <div className="day-event-more">
-                          +{dayEvents.length - 3} more
-                        </div>
+                        <div className="day-event-more">+{dayEvents.length - 3} more</div>
                       )}
                     </div>
                   )}
@@ -260,9 +241,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
               <div key={dayIndex} className="week-day-column">
                 <div className="week-day-header">
                   <div className="week-day-name">{format(day, 'EEE')}</div>
-                  <div className={`week-day-number ${isSameDay(day, new Date()) ? 'today' : ''}`}>
-                    {format(day, 'd')}
-                  </div>
+                  <div className={`week-day-number ${isSameDay(day, new Date()) ? 'today' : ''}`}>{format(day, 'd')}</div>
                 </div>
                 <div className="week-hours-container">
                   {hours.map(hour => (
@@ -271,8 +250,8 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                   <div className="week-events-overlay">
                     {getWeekEventsForDay(day).map(event => {
                       const time = event.time || '00:00';
-                      const [hours, minutes] = time.split(':').map(Number);
-                      const topPercent = ((hours * 60 + minutes) / (24 * 60)) * 100;
+                      const [h, m] = time.split(':').map(Number);
+                      const topPercent = ((h * 60 + m) / (24 * 60)) * 100;
                       return (
                         <div
                           key={event.id}
@@ -284,6 +263,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                             {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
                           </div>
                           <div className="week-event-name">{event.name}</div>
+                          {getLabel(event) && <div className="week-event-label">{getLabel(event)}</div>}
                         </div>
                       );
                     })}
