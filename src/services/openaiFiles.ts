@@ -192,7 +192,7 @@ async function renderPdfToImages(
   scale = VISION_RENDER_SCALE
 ): Promise<string[]> {
   const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await (pdfjsLib as any).getDocument({ data }).promise;
+  const pdf = await getDocument({ data }).promise;
 
   const urls: string[] = [];
   const pages = Math.min(pdf.numPages, maxPages);
