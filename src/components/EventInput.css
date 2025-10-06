@@ -1,3 +1,53 @@
+/* =========================
+   GLOBAL & ROOT VARIABLES
+   ========================= */
+:root {
+  --highlight-color: black;
+  --bg-primary: #0b0b0b;
+  --bg-secondary: #121212;
+  --bg-hover: #161616;
+  --border-color: #2a2a2a;
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+  --primary: #ffffff;
+  --error-bg: #2b0000;
+  --error: #ff6363;
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --highlight-color: white;
+  }
+}
+
+/* =========================
+   FIXED INPUT BAR
+   ========================= */
+.event-input-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(6px);
+}
+
+.event-input-inner {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 14px 16px;
+}
+
+.event-input-offset {
+  height: 78px; /* Spacer height to avoid overlap */
+}
+
+/* =========================
+   BASE STYLING
+   ========================= */
 .event-input {
   background: none;
   border: 0;
@@ -7,16 +57,9 @@
   width: 100%;
 }
 
-:root {
-  --highlight-color: black;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --highlight-color: white;
-  }
-}
-
+/* =========================
+   PILL INPUT CONTAINER
+   ========================= */
 .pill-input-container {
   position: relative;
   display: flex;
@@ -24,7 +67,7 @@
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 999px;
-  padding: 4px 56px 4px 56px;
+  padding: 4px 56px;
   transition: all 0.2s ease;
 }
 
@@ -33,6 +76,9 @@
   box-shadow: 0 0 0 1px var(--highlight-color);
 }
 
+/* =========================
+   TEXT INPUT FIELD
+   ========================= */
 .pill-input {
   flex: 1;
   border: none;
@@ -48,6 +94,9 @@
   color: var(--text-secondary);
 }
 
+/* =========================
+   BUTTONS
+   ========================= */
 .pill-plus-btn,
 .pill-submit-btn {
   position: absolute;
@@ -70,8 +119,8 @@
 
 .pill-plus-btn:hover:not(:disabled),
 .pill-submit-btn:hover:not(:disabled) {
-  background-color: var(--primary);
-  color: white;
+  background-color: var(--highlight-color);
+  color: var(--bg-primary);
   transform: translateY(-50%) scale(1.05);
 }
 
@@ -81,6 +130,9 @@
   cursor: not-allowed;
 }
 
+/* =========================
+   POPUP MENU
+   ========================= */
 .input-popup {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -125,48 +177,9 @@
   color: var(--primary);
 }
 
-.loading-spinner-small {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-.input-error {
-  padding: 12px;
-  background-color: var(--error-bg);
-  color: var(--error);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  margin-top: 12px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 768px) {
-  .pill-plus-btn,
-  .pill-submit-btn {
-    width: 36px;
-    height: 36px;
-  }
-  .pill-input-container {
-    padding: 4px 50px 4px 50px;
-  }
-  .input-popup {
-    left: 0;
-  }
-  :root { --highlight-color: black; }
-@media (prefers-color-scheme: dark) { :root { --highlight-color: white; } }
-
+/* =========================
+   FULL-WIDTH BUTTON (DRAFT)
+   ========================= */
 .pill-full-btn {
   width: 100%;
   display: block;
@@ -192,175 +205,53 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
-:root {
-  --event-bar-height: 78px; /* total height incl. padding */
-  --event-bar-maxw: 980px;
-}
 
-/* Fixed top bar wrapper */
-.event-input-fixed {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  background: #0b0b0b;              /* identical in light + dark */
-  border-bottom: 1px solid #1e1e1e; /* identical in light + dark */
-  backdrop-filter: blur(6px);
-}
-
-/* Center the inner content on all screens */
-.event-input-inner {
-  max-width: var(--event-bar-maxw);
-  margin-inline: auto;
-  padding: 14px 16px; /* vertical + horizontal padding for the bar */
-}
-
-/* Spacer to prevent overlap with page content */
-.event-input-offset {
-  height: var(--event-bar-height);
-}
-
-/* Core layout (kept from your original classes but normalized) */
-.event-input {
-  width: 100%;
-}
-
-/* pill container stretches full width and aligns content */
-.pill-input-container {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 10px;
-  align-items: center;
-}
-
-/* Input pill — same visuals in light AND dark */
-.pill-input {
-  width: 100%;
-  height: 50px;
-  border-radius: 9999px;
-  padding: 0 16px;
-  font-size: 15px;
-  line-height: 1;
-  border: 1px solid #2a2a2a;
-  background: #121212;
-  color: #ffffff;
-  outline: none;
-}
-
-.pill-input::placeholder {
-  color: #7a7a7a;
-}
-
-/* Buttons — same visuals in light AND dark */
-.pill-plus-btn,
-.pill-submit-btn,
-.pill-full-btn {
-  height: 50px;
-  border-radius: 9999px;
-  padding: 0 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #2a2a2a;
-  background: #161616;
-  color: #ffffff;
-  cursor: pointer;
-  transition: transform 0.06s ease, background 0.15s ease, opacity 0.15s ease;
-}
-
-.pill-plus-btn:disabled,
-.pill-submit-btn:disabled,
-.pill-full-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pill-plus-btn:hover,
-.pill-submit-btn:hover,
-.pill-full-btn:hover {
-  background: #1d1d1d;
-}
-
-.pill-plus-btn:active,
-.pill-submit-btn:active,
-.pill-full-btn:active {
-  transform: translateY(1px);
-}
-
-/* Popup anchored under the buttons; keep within the fixed bar */
-.input-popup {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 86px; /* aligns under the plus button given grid gap + button widths */
-  min-width: 220px;
-  background: #0f0f0f;
-  border: 1px solid #2a2a2a;
-  border-radius: 12px;
-  padding: 8px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
-  z-index: 10000;
-}
-
-.popup-option {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: transparent;
-  color: #ffffff;
-  border: none;
-  cursor: pointer;
-}
-
-.popup-option:hover {
-  background: #151515;
-}
-
-/* Error message — consistent theme */
-.input-error {
-  margin-top: 8px;
-  color: #ff6363;
-  font-size: 13px;
-}
-
-/* Loading spinner (kept functional) */
+/* =========================
+   ERRORS & SPINNER
+   ========================= */
 .loading-spinner-small {
-  width: 18px;
-  height: 18px;
-  border: 2px solid #2a2a2a;
-  border-top-color: #ffffff;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin 0.6s linear infinite;
 }
 
+.input-error {
+  padding: 12px;
+  background-color: var(--error-bg);
+  color: var(--error);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  margin-top: 12px;
+}
+
+/* =========================
+   ANIMATIONS
+   ========================= */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* Make sure light mode doesn't re-style anything here */
-@media (prefers-color-scheme: light) {
-  .event-input-fixed,
-  .event-input-inner,
-  .pill-input,
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+@media (max-width: 768px) {
   .pill-plus-btn,
-  .pill-submit-btn,
-  .pill-full-btn,
-  .input-popup,
-  .popup-option,
-  .input-error {
-    /* force-identical visuals */
-    color: inherit;
+  .pill-submit-btn {
+    width: 36px;
+    height: 36px;
   }
-}
-
-/* Responsive tweak for tiny screens */
-@media (max-width: 420px) {
-  :root { --event-bar-height: 86px; }
-  .pill-input-container { gap: 8px; }
-  .input-popup { right: 72px; }
-}
-
+  .pill-input-container {
+    padding: 4px 50px;
+  }
+  .input-popup {
+    left: 0;
+  }
 }
