@@ -1,9 +1,10 @@
-/* =========================
-   ROOT VARIABLES
-   ========================= */
+/* src/components/EventInput.css */
+
+/* ===== Vars ===== */
 :root {
   --highlight-color: black;
   --bg-primary: #0b0b0b;
+  --bg-secondary: #121212;
   --bg-hover: #161616;
   --border-color: #2a2a2a;
   --text-primary: #ffffff;
@@ -12,29 +13,32 @@
   --error-bg: #2b0000;
   --error: #ff6363;
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  /* Loading invert scheme: light -> black bg, white text/spinner */
+  --loading-bg: #000000;
+  --loading-fg: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --highlight-color: white;
+    /* In dark, invert: white bg, black text/spinner */
+    --loading-bg: #ffffff;
+    --loading-fg: #000000;
   }
 }
 
-/* =========================
-   BASE RESET
-   ========================= */
+/* ===== Base reset ===== */
 .event-input {
   all: unset;
   display: block;
   width: 100%;
 }
 
-/* =========================
-   FIXED PILL AT BOTTOM
-   ========================= */
+/* ===== Fixed pill at bottom, centered ===== */
 .event-input-fixed {
   position: fixed;
-  bottom: 24px; /* lift slightly off the edge for cleaner look */
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
@@ -42,16 +46,18 @@
   justify-content: center;
   align-items: center;
   width: 100%;
-  pointer-events: none; /* allows clicks only inside pill */
+  pointer-events: none;
 }
 
+/* ===== Pill container =====
+   NOTE: width reverted to original 980px as requested */
 .pill-input-container {
   pointer-events: auto;
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
-  max-width: 680px;
+  max-width: 980px; /* original width restored */
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 999px;
@@ -65,9 +71,41 @@
   box-shadow: 0 0 0 1px var(--highlight-color);
 }
 
-/* =========================
-   INPUT FIELD
-   ========================= */
+/* ===== Loading variant (monochrome, label + spinner) ===== */
+.pill-input-container.loading {
+  background-color: var(--loading-bg);
+  border-color: var(--loading-bg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.pill-loading-content {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.loading-text {
+  color: var(--loading-fg);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.loading-spinner-contrast {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--loading-fg);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ===== Input mode (non-loading) ===== */
+.pill-working-area { position: relative; width: 100%; }
+
 .pill-input {
   flex: 1;
   border: none;
@@ -83,9 +121,7 @@
   color: var(--text-secondary);
 }
 
-/* =========================
-   ACTION BUTTONS
-   ========================= */
+/* ===== Buttons ===== */
 .pill-plus-btn,
 .pill-submit-btn {
   position: absolute;
@@ -119,14 +155,12 @@
   cursor: not-allowed;
 }
 
-/* =========================
-   POPUP MENU
-   ========================= */
+/* ===== Popup ===== */
 .input-popup {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 8px;
-  background-color: var(--bg-primary);
+  background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
@@ -152,22 +186,35 @@
   transition: all 0.2s ease;
 }
 
-.popup-option:hover {
-  background-color: var(--bg-hover);
+.popup-option:hover { background-color: var(--bg-hover); }
+.popup-option svg { flex-shrink: 0; color: var(--text-secondary); }
+.popup-option:hover svg { color: var(--primary); }
+
+/* ===== Draft CTA ===== */
+.pill-full-btn {
+  width: 100%;
+  display: block;
+  border: 2px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 12px 56px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.2s ease;
 }
 
-.popup-option svg {
-  flex-shrink: 0;
-  color: var(--text-secondary);
+.pill-full-btn:hover:not(:disabled),
+.pill-full-btn:focus-visible {
+  background-color: var(--highlight-color);
+  color: var(--bg-primary);
+  outline: none;
 }
 
-.popup-option:hover svg {
-  color: var(--primary);
-}
+.pill-full-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* =========================
-   ERROR + LOADING
-   ========================= */
+/* ===== Error bubble ===== */
 .input-error {
   position: fixed;
   bottom: 90px;
@@ -182,45 +229,18 @@
   max-width: 90%;
 }
 
-.loading-spinner-small {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
+/* ===== Animations ===== */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-/* =========================
-   ANIMATIONS
-   ========================= */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* =========================
-   RESPONSIVE
-   ========================= */
+/* ===== Responsive ===== */
 @media (max-width: 768px) {
   .pill-input-container {
-    max-width: 680px; /* stays consistent */
+    max-width: 980px; /* keep original width cap */
     width: calc(100% - 32px);
     margin: 0 16px;
     padding: 4px 50px;
   }
-
-  .pill-plus-btn,
-  .pill-submit-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .input-popup {
-    left: 0;
-  }
+  .pill-plus-btn, .pill-submit-btn { width: 36px; height: 36px; }
+  .input-popup { left: 0; }
 }
