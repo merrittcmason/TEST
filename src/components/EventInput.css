@@ -1,5 +1,5 @@
 /* =========================
-   ROOT + COLOR VARIABLES
+   ROOT VARIABLES
    ========================= */
 :root {
   --highlight-color: black;
@@ -21,7 +21,7 @@
 }
 
 /* =========================
-   GLOBAL RESET
+   BASE RESET
    ========================= */
 .event-input {
   all: unset;
@@ -30,26 +30,23 @@
 }
 
 /* =========================
-   FIXED PILL BAR AT BOTTOM
+   FIXED PILL AT BOTTOM
    ========================= */
 .event-input-fixed {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 24px; /* lift slightly off the edge for cleaner look */
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 9999;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 14px;
-  background: transparent;
-  backdrop-filter: none;
+  width: 100%;
+  pointer-events: none; /* allows clicks only inside pill */
 }
 
-/* =========================
-   PILL INPUT CONTAINER
-   ========================= */
 .pill-input-container {
+  pointer-events: auto;
   position: relative;
   display: flex;
   align-items: center;
@@ -69,7 +66,7 @@
 }
 
 /* =========================
-   TEXT INPUT
+   INPUT FIELD
    ========================= */
 .pill-input {
   flex: 1;
@@ -173,7 +170,7 @@
    ========================= */
 .input-error {
   position: fixed;
-  bottom: 80px;
+  bottom: 90px;
   left: 50%;
   transform: translateX(-50%);
   padding: 10px 16px;
@@ -211,14 +208,18 @@
    ========================= */
 @media (max-width: 768px) {
   .pill-input-container {
-    max-width: 95%;
+    max-width: 680px; /* stays consistent */
+    width: calc(100% - 32px);
+    margin: 0 16px;
     padding: 4px 50px;
   }
+
   .pill-plus-btn,
   .pill-submit-btn {
     width: 36px;
     height: 36px;
   }
+
   .input-popup {
     left: 0;
   }
