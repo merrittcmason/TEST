@@ -175,8 +175,13 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
   return (
     <>
       <div className="event-input-fixed">
-        <div className="event-input-inner">
-          {hasDrafts ? (
+        <div className={`pill-input-container ${loading ? 'loading' : ''}`}>
+          {loading ? (
+            <div className="pill-loading-content" aria-live="polite" aria-busy="true">
+              <span className="loading-text">Creating Events</span>
+              <div className="loading-spinner-contrast" />
+            </div>
+          ) : hasDrafts ? (
             <div className="event-input">
               <button
                 className="pill-full-btn"
@@ -190,7 +195,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
             </div>
           ) : (
             <div className="event-input">
-              <div className="pill-input-container">
+              <div className="pill-working-area">
                 <input
                   type="text"
                   value={textInput}
@@ -304,9 +309,6 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
           )}
         </div>
       </div>
-
-      {/* Spacer so page content isn't hidden under the fixed input bar */}
-      <div className="event-input-offset" />
     </>
   );
 }
