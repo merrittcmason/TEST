@@ -1,10 +1,9 @@
 /* =========================
-   GLOBAL & ROOT VARIABLES
+   ROOT + COLOR VARIABLES
    ========================= */
 :root {
   --highlight-color: black;
   --bg-primary: #0b0b0b;
-  --bg-secondary: #121212;
   --bg-hover: #161616;
   --border-color: #2a2a2a;
   --text-primary: #ffffff;
@@ -22,39 +21,29 @@
 }
 
 /* =========================
-   FIXED INPUT BAR
+   GLOBAL RESET
    ========================= */
-.event-input-fixed {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
-  backdrop-filter: blur(6px);
-}
-
-.event-input-inner {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 14px 16px;
-}
-
-.event-input-offset {
-  height: 78px; /* Spacer height to avoid overlap */
+.event-input {
+  all: unset;
+  display: block;
+  width: 100%;
 }
 
 /* =========================
-   BASE STYLING
+   FIXED PILL BAR AT BOTTOM
    ========================= */
-.event-input {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
-  width: 100%;
+.event-input-fixed {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 14px;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 /* =========================
@@ -64,11 +53,14 @@
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
+  max-width: 680px;
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 999px;
   padding: 4px 56px;
   transition: all 0.2s ease;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.4);
 }
 
 .pill-input-container:focus-within {
@@ -77,7 +69,7 @@
 }
 
 /* =========================
-   TEXT INPUT FIELD
+   TEXT INPUT
    ========================= */
 .pill-input {
   flex: 1;
@@ -95,7 +87,7 @@
 }
 
 /* =========================
-   BUTTONS
+   ACTION BUTTONS
    ========================= */
 .pill-plus-btn,
 .pill-submit-btn {
@@ -137,8 +129,7 @@
   position: absolute;
   bottom: calc(100% + 8px);
   left: 8px;
-  margin: 0;
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
@@ -178,37 +169,22 @@
 }
 
 /* =========================
-   FULL-WIDTH BUTTON (DRAFT)
+   ERROR + LOADING
    ========================= */
-.pill-full-btn {
-  width: 100%;
-  display: block;
-  border: 2px solid var(--border-color);
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  border-radius: 999px;
-  padding: 12px 56px;
-  font-size: 1rem;
-  font-weight: 600;
+.input-error {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  background-color: var(--error-bg);
+  color: var(--error);
+  border-radius: 8px;
+  font-size: 0.875rem;
   text-align: center;
-  transition: all 0.2s ease;
+  max-width: 90%;
 }
 
-.pill-full-btn:hover:not(:disabled),
-.pill-full-btn:focus-visible {
-  background-color: var(--highlight-color);
-  color: var(--bg-primary);
-  outline: none;
-}
-
-.pill-full-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* =========================
-   ERRORS & SPINNER
-   ========================= */
 .loading-spinner-small {
   width: 20px;
   height: 20px;
@@ -216,15 +192,6 @@
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
-}
-
-.input-error {
-  padding: 12px;
-  background-color: var(--error-bg);
-  color: var(--error);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  margin-top: 12px;
 }
 
 /* =========================
@@ -243,13 +210,14 @@
    RESPONSIVE
    ========================= */
 @media (max-width: 768px) {
+  .pill-input-container {
+    max-width: 95%;
+    padding: 4px 50px;
+  }
   .pill-plus-btn,
   .pill-submit-btn {
     width: 36px;
     height: 36px;
-  }
-  .pill-input-container {
-    padding: 4px 50px;
   }
   .input-popup {
     left: 0;
