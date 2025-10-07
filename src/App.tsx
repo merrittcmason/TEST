@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ModeProvider } from './contexts/ModeContext';
+import { ModeProvider, useMode } from './contexts/ModeContext';
 import { LaunchScreen } from './components/LaunchScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { EventInput } from './components/EventInput';
 import { AuthPage } from './pages/AuthPage';
 import { LandingPage } from './pages/LandingPage';
 import { CalendarPage } from './pages/CalendarPage';
@@ -35,6 +36,7 @@ type Event = Database['public']['Tables']['events']['Row'];
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
+  const { mode } = useMode();
   const [showLaunch, setShowLaunch] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
@@ -145,12 +147,16 @@ function AppContent() {
 
   if (currentPage === 'calendar') {
     return (
-      <CalendarPage
-        initialDate={selectedDate || undefined}
-        selectedEvent={selectedEvent}
-        onNavigate={handleNavigate}
-        onEventsExtracted={handleEventsExtracted}
-      />
+      <>
+        <CalendarPage
+          initialDate={selectedDate || undefined}
+          selectedEvent={selectedEvent}
+          onNavigate={handleNavigate}
+        />
+        <div className="event-input-floating">
+          <EventInput onEventsExtracted={handleEventsExtracted} mode={mode} />
+        </div>
+      </>
     );
   }
 
