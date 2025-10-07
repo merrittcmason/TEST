@@ -325,12 +325,79 @@ async function extractTextFromDocx(file: File): Promise<string> {
       if (line) parts.push(line)
     })
   })
-  doc.querySelectorAll("li, p").forEach((el) => {
+  doc.querySelectorAll("h1,h2,h3,h4,h5,h6,li,p,span,div,strong,em").forEach((el) => {
     const t = el.textContent?.replace(/\s+/g, " ").trim()
     if (t) parts.push(t)
   })
   const lines = [...new Set(parts)].map((s) => s.trim()).filter(Boolean)
   return lines.join("\n")
+}
+
+const MONTHS = [
+  "january","february","march","april","may","june","july","august","september","october","november","december",
+  "jan","feb","mar","apr","may","jun","jul","aug","sep","sept","oct","nov","dec"
+]
+
+function isMonthHeader(line: string): { month: number; year: number | null } | null {
+  const s = line.trim().toLowerCase()
+  const m1 = s.match(/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b(?:[,\s]+(\d{4}))?$/i)
+  if (!m1) return null
+  const monthName = m1[1].toLowerCase()
+  const idx = MONTHS.indexOf(monthName)
+  const month = (["jan","january","feb","february","mar","march","apr","april","may","jun","june","jul","july","aug","august","sep","sept","september","oct","october","nov","november","dec","december"].indexOf(monthName) / 2 | 0) + 1
+  const year = m1[2] ? parseInt(m1[2], 10) : null
+  return { month, year }
+}
+
+function lineHasExplicitMonthOrDate(line: string): boolean {
+  const s = line.toLowerCase()
+  if (MONTHS.some(m => s.includes(m))) return true
+  if (/\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/.test(s)) return true
+  if (/\b\d{4}-\d{2}-\d{2}\b/.test(s)) return true
+  return false
+}
+
+function lineStartsWithDayOnly(line: string): number | null {
+  const m = line.match(/^\s*(\d{1,2})(?!\d)/)
+  if (!m) return null
+  const d = parseInt(m[1], 10)
+  if (d < 1 || d > 31) return null
+  return d
+}
+
+function applyMonthContext(raw: string): string {
+  const lines = raw.split("\n")
+  let curMonth: number | null = null
+  let curYear: number = DateTime.now().year
+  const out: string[] = []
+  for (const line of lines) {
+    const hdr = isMonthHeader(line)
+    if (hdr) {
+      curMonth = hdr.month
+      if (hdr.year) curYear = hdr.year
+      out.push(line)
+      continue
+    }
+    if (lineHasExplicitMonthOrDate(line)) {
+      out.push(line)
+      continue
+    }
+    const day = lineStartsWithDayOnly(line)
+    if (day && curMonth) {
+      const dt = DateTime.fromObject({ year: curYear, month: curMonth, day })
+      const prefix = dt.isValid ? `${dt.toFormat("LLLL d, yyyy")} | ` : ""
+      out.push(prefix + line)
+    } else {
+      out.push(line)
+    }
+  }
+  return out.join("\n")
+}
+
+async function extractTextFromDocxWithContext(file: File): Promise<string> {
+  const raw = await extractTextFromDocx(file)
+  const contextual = applyMonthContext(raw)
+  return contextual
 }
 
 async function extractTextFromXlsxLegacy(file: File): Promise<string> {
@@ -710,7 +777,7 @@ export class OpenAIFilesService {
 
     let raw = ""
     if (type.includes("word") || name.endsWith(".docx")) {
-      raw = await extractTextFromDocx(file)
+      raw = await extractTextFromDocxWithContext(file)
     } else if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text()
     } else {
