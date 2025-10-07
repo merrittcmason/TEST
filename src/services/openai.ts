@@ -118,32 +118,69 @@ function normDate(input: any): string | null {
   return null
 }
 
+function serialToTime(d: XLSX.SSF$Date): string | null {
+  const hh = d.H || d.h || 0
+  const mm = d.M || d.m || 0
+  const ss = d.S || d.s || 0
+  if (hh === 0 && mm === 0 && ss === 0) return null
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+}
+
 function normTime(input: any): string | null {
   if (input == null) return null
-  const raw = String(input).trim()
+  if (typeof input === "number") {
+    const d = XLSX.SSF.parse_date_code(input as any)
+    if (d) {
+      const t = serialToTime(d)
+      if (t) return t
+    }
+  }
+  let raw = String(input).trim()
   if (!raw || raw === "--:-- --") return null
-  if (/^\d{1,2}:\d{2}$/.test(raw)) return raw
+  raw = raw.replace(/[–—−-]+/g, "-")
+  const range = raw.match(/^([^-\u2013\u2014]+)\s*-\s*.+$/i)
+  if (range) raw = range[1].trim()
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(raw)) {
+    const [h, m] = raw.split(":")
+    return `${String(Number(h)).padStart(2, "0")}:${String(Number(m)).padStart(2, "0")}`
+  }
+  const ampm1 = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i)
+  if (ampm1) {
+    let hh = parseInt(ampm1[1], 10)
+    const mm = ampm1[2] ? parseInt(ampm1[2], 10) : 0
+    const ap = ampm1[3].toLowerCase()
+    if (ap === "pm" && hh !== 12) hh += 12
+    if (ap === "am" && hh === 12) hh = 0
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+  }
+  const ampm2 = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/i)
+  if (ampm2) {
+    let hh = parseInt(ampm2[1], 10)
+    const mm = parseInt(ampm2[2], 10)
+    const ap = ampm2[3].toLowerCase()
+    if (ap === "pm" && hh !== 12) hh += 12
+    if (ap === "am" && hh === 12) hh = 0
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+  }
   const lower = raw.toLowerCase()
   if (lower === "noon") return "12:00"
   if (lower === "midnight") return "00:00"
-  const m1 = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i)
-  if (m1) {
-    let hh = parseInt(m1[1], 10)
-    const mm = m1[2] ? parseInt(m1[2], 10) : 0
-    const ap = m1[3].toLowerCase()
-    if (ap === "pm" && hh !== 12) hh += 12
-    if (ap === "am" && hh === 12) hh = 0
-    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+  const iso = DateTime.fromISO(raw)
+  if (iso.isValid) return iso.toFormat("HH:mm")
+  return null
+}
+
+function extractTimeFromDateCell(input: any): string | null {
+  if (typeof input === "number") {
+    const d = XLSX.SSF.parse_date_code(input as any)
+    if (d) return serialToTime(d)
   }
-  const m2 = lower.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i)
-  if (m2) {
-    let hh = parseInt(m2[1], 10)
-    const mm = parseInt(m2[2], 10)
-    const ap = m2[3].toLowerCase()
-    if (ap === "pm" && hh !== 12) hh += 12
-    if (ap === "am" && hh === 12) hh = 0
-    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
-  }
+  const s = String(input ?? "").trim()
+  if (!s) return null
+  const dt = DateTime.fromISO(s)
+  if (dt.isValid && (dt.hour || dt.minute || dt.second)) return dt.toFormat("HH:mm")
+  const m = s.match(/(\d{1,2}(:\d{2})?\s*(am|pm))/i) || s.match(/(\d{1,2}:\d{2})/)
+  if (m) return normTime(m[1])
   return null
 }
 
@@ -326,19 +363,28 @@ function tryParseEventsFromSheet(sheet: XLSX.WorkSheet): ParsedEvent[] {
   const hTime = hTimeN ? normMap[hTimeN] : null
   const hTag = hTagN ? normMap[hTagN] : null
   if (!hAssignment || !hDate) return []
+
   const out: ParsedEvent[] = []
   for (const row of rows) {
     const aRaw = row[hAssignment]
     const dRaw = row[hDate]
     const tRaw = hTime ? row[hTime] : ""
     const tagRaw = hTag ? row[hTag] : ""
+
     const a = String(aRaw ?? "").trim()
     if (!a) continue
-    const d = normDate(dRaw)
-    if (!d) continue
-    const t = normTime(tRaw)
+    const date = normDate(dRaw)
+    if (!date) continue
+
+    let time = normTime(tRaw)
+    if (!time) {
+      const tFromDate = extractTimeFromDateCell(dRaw)
+      if (tFromDate) time = tFromDate
+    }
+
     const tag = capTag(tagRaw)
-    out.push({ event_name: a, event_date: d, event_time: t, event_tag: tag })
+
+    out.push({ event_name: a, event_date: date, event_time: time, event_tag: tag })
   }
   return out
 }
