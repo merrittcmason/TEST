@@ -32,7 +32,7 @@
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1400;
+  z-index: 2000;
   width: var(--pill-maxw);
   pointer-events: none;
   transition: transform 0.25s ease, filter 0.25s ease;
@@ -143,7 +143,7 @@ html.menu-open .event-input-fixed {
 .pill-submit-btn:disabled,
 .pill-plus-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.input-popup-overlay { position: fixed; inset: 0; z-index: 1450; background: transparent; }
+.input-popup-overlay { position: fixed; inset: 0; z-index: 1900; background: transparent; }
 
 .input-popup {
   position: absolute;
@@ -156,8 +156,9 @@ html.menu-open .event-input-fixed {
   box-shadow: 0 8px 24px rgba(0,0,0,0.2);
   overflow: hidden;
   min-width: 220px;
-  z-index: 1460;
+  z-index: 1;
   animation: slideUp 0.2s ease;
+  pointer-events: auto;
 }
 
 .input-popup::before { content: none; }
