@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './HamburgerMenu.css';
 
@@ -40,27 +41,21 @@ export function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
         </div>
       </button>
 
-      {isOpen && (
-        <>
-          <div className="menu-overlay" onClick={() => setIsOpen(false)} />
-          <nav className="hamburger-menu slide-in-from-left">
-            <ul className="menu-list">
-              <li>
-                <button onClick={() => handleNavigation('settings')}>Settings</button>
-              </li>
-              <li>
-                <button onClick={() => handleNavigation('account')}>Account</button>
-              </li>
-              <li>
-                <button onClick={() => handleNavigation('subscription')}>Subscription</button>
-              </li>
-              <li>
-                <button onClick={handleSignOut} className="sign-out-button">Sign Out</button>
-              </li>
-            </ul>
-          </nav>
-        </>
-      )}
+      {isOpen &&
+        createPortal(
+          <>
+            <div className="menu-overlay" onClick={() => setIsOpen(false)} />
+            <nav className="hamburger-menu slide-in-from-left">
+              <ul className="menu-list">
+                <li><button onClick={() => handleNavigation('settings')}>Settings</button></li>
+                <li><button onClick={() => handleNavigation('account')}>Account</button></li>
+                <li><button onClick={() => handleNavigation('subscription')}>Subscription</button></li>
+                <li><button onClick={handleSignOut} className="sign-out-button">Sign Out</button></li>
+              </ul>
+            </nav>
+          </>,
+          document.body
+        )}
     </>
   );
 }
