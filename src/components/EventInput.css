@@ -9,6 +9,8 @@
   --glass-btn-bg: rgba(255, 255, 255, 0.50);
   --glass-btn-border: rgba(0, 0, 0, 0.14);
   --glass-btn-hover: rgba(255, 255, 255, 0.65);
+  --glass-blur: 12px;
+  --glass-sat: 160%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -68,8 +70,8 @@
   transition: all 0.2s ease;
   pointer-events: auto;
   box-shadow: 0 0 16px rgba(0,0,0,0.2);
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
-  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
 }
 
 .pill-input-container::before {
@@ -182,16 +184,16 @@
   bottom: calc(100% + 8px);
   left: 8px;
   margin: 0;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(0, 0, 0, 0.16);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: 0 10px 28px rgba(0,0,0,0.28);
   overflow: hidden;
   min-width: 220px;
   z-index: 100;
   animation: slideUp 0.2s ease;
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
-  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
 }
 
 .input-popup::before {
@@ -200,7 +202,7 @@
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.05) 100%);
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 100%);
 }
 
 .popup-option {
@@ -234,17 +236,6 @@
 
 .popup-option:hover svg {
   color: var(--primary);
-}
-
-@media (prefers-color-scheme: dark) {
-  .input-popup {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.26);
-    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
-  }
-  .input-popup::before {
-    background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%);
-  }
 }
 
 .loading-spinner-small {
@@ -292,8 +283,8 @@
   text-align: center;
   transition: all 0.2s ease;
   height: var(--pill-height);
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
-  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
 }
 
 .pill-full-btn:hover:not(:disabled),
