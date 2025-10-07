@@ -1,10 +1,19 @@
 :root {
   --menu-width: 280px;
   --menu-blur: 6px;
+  --menu-item-hover: rgba(0, 0, 0, 0.08);
+  --menu-item-active: rgba(0, 0, 0, 0.12);
 }
 
 @media (max-width: 768px) {
   :root { --menu-width: 260px; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --menu-item-hover: rgba(255, 255, 255, 0.14);
+    --menu-item-active: rgba(255, 255, 255, 0.18);
+  }
 }
 
 html.menu-open #root {
@@ -96,6 +105,7 @@ html.menu-open body {
   -webkit-backdrop-filter: saturate(180%) blur(18px);
   backdrop-filter: saturate(180%) blur(18px);
   overflow: hidden;
+  animation: slideInFromLeft 0.25s ease both;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -103,10 +113,6 @@ html.menu-open body {
     background: rgba(255, 255, 255, 0.06);
     border-right: 1px solid rgba(255, 255, 255, 0.22);
   }
-}
-
-.slide-in-from-left {
-  animation: slideInFromLeft 0.25s ease both;
 }
 
 .menu-list {
@@ -136,23 +142,23 @@ html.menu-open body {
 
 .menu-list button:hover,
 .menu-list button:focus-visible {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--menu-item-hover);
   color: var(--text-primary);
   outline: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  .menu-list button:hover,
-  .menu-list button:focus-visible {
-    background: rgba(255, 255, 255, 0.14);
-  }
+.menu-list button:active {
+  background: var(--menu-item-active);
+  transform: translateY(1px);
 }
-
-.menu-list button:active { transform: translateY(1px); }
 
 .sign-out-button { color: var(--error) !important; }
 
 @keyframes slideInFromLeft {
   from { transform: translateX(-100%); opacity: 0.8; }
   to { transform: translateX(0); opacity: 1; }
+}
+
+@media (max-width: 768px) {
+  .hamburger-menu { width: 260px; }
 }
