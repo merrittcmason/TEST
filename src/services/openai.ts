@@ -333,36 +333,64 @@ async function extractTextFromDocx(file: File): Promise<string> {
   return lines.join("\n")
 }
 
-const MONTH_WORDS = [
-  "january","february","march","april","may","june","july","august","september","october","november","december",
-  "jan","feb","mar","apr","may","jun","jul","aug","sep","sept","oct","nov","dec"
-]
+function toStructuredPlainText(raw: string): string {
+  const cleaned = (raw || "")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim()
+  const lines = cleaned.split("\n").map((l) => denoiseLine(l)).filter(Boolean)
+  return lines.join("\n")
+}
 
-function monthIndexFromWord(w: string): number | null {
-  const full = ["january","february","march","april","may","june","july","august","september","october","november","december"]
-  const short = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
-  const s = w.toLowerCase()
-  let idx = full.indexOf(s)
-  if (idx >= 0) return idx + 1
-  idx = short.indexOf(s)
-  if (idx >= 0) return idx + 1
-  if (s === "sept") return 9
-  return null
+function denoiseLine(line: string): string {
+  let s = line
+  s = s.replace(/(^|\s)(M|T|Tu|Tue|Tues|W|Th|Thu|Thur|Thurs|F|Fr|Fri|Sat|Sun|Su)(?=\s|$)/gi, " ")
+  s = s.replace(/\b(Sec(t(ion)?)?\.?\s*[A-Za-z0-9\-]+)\b/gi, " ")
+  s = s.replace(/\b(Room|Rm\.?|Bldg|Building|Hall|Campus|Location)\s*[:#]?\s*[A-Za-z0-9\-\.\(\)]+/gi, " ")
+  s = s.replace(/\b(Zoom|Online|In[-\s]?Person)\b/gi, " ")
+  s = s.replace(/\b(CRN|Course\s*ID)\s*[:#]?\s*[A-Za-z0-9\-]+\b/gi, " ")
+  s = s.replace(/[•●▪■]/g, "-").replace(/\s{2,}/g, " ").trim()
+  return s
+}
+
+const SLASH_CLASS = "[/∕／]"
+const DATE_REGEX = new RegExp(
+  String.raw`\b\d{1,2}\s*${SLASH_CLASS}\s*\d{1,2}(?:\s*${SLASH_CLASS}\s*\d{2,4})?\b`
+)
+
+function lineHasExplicitMonthOrDate(line: string): boolean {
+  const s = line.toLowerCase()
+  if (/\b\d{4}-\d{2}-\d{2}\b/.test(s)) return true
+  if (DATE_REGEX.test(s)) return true
+  if (/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b\s*\d{1,2}\b/.test(s)) return true
+  return false
+}
+
+function lineStartsWithDayToken(line: string): number | null {
+  const m = line.match(
+    /^\s*(?:[-–—*•●▪■]\s*)?(?:(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|m|t|w|th|f|su|tu)\.?\s+)?(\d{1,2})(?:st|nd|rd|th)?(?!\d)/i
+  )
+  if (!m) return null
+  const d = parseInt(m[1], 10)
+  if (d < 1 || d > 31) return null
+  return d
 }
 
 function detectMonthHeader(line: string): { month: number; year: number | null } | null {
   const s = line.trim()
   const lc = s.toLowerCase()
   const hasDayNum = /\b([1-9]|[12]\d|3[01])\b/.test(lc)
-  const hasSlashDate = /\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/.test(lc)
-  if (hasDayNum || hasSlashDate) return null
+  if (hasDayNum || DATE_REGEX.test(lc)) return null
   const m = lc.match(/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b/i)
   if (!m) return null
-  const y = lc.match(/\b(20\d{2})\b/)
-  const month = monthIndexFromWord(m[1])
-  const year = y ? parseInt(y[1], 10) : null
-  if (!month) return null
-  return { month, year }
+  const y = lc.match(/\b(19|20)\d{2}\b/)
+  const month = ["january","february","march","april","may","june","july","august","september","october","november","december","jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[1].toLowerCase())
+  const monthIdx = m[1].length <= 3 ? ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[1].toLowerCase()) + 1
+    : ["january","february","march","april","may","june","july","august","september","october","november","december"].indexOf(m[1].toLowerCase()) + 1
+  if (!monthIdx) return null
+  return { month: monthIdx, year: y ? parseInt(y[0], 10) : null }
 }
 
 function detectYearOnly(line: string): number | null {
@@ -370,22 +398,6 @@ function detectYearOnly(line: string): number | null {
   if (!m) return null
   const y = parseInt(m[0], 10)
   return y >= 1900 && y <= 2100 ? y : null
-}
-
-function lineHasExplicitMonthOrDate(line: string): boolean {
-  const s = line.toLowerCase()
-  if (/\b\d{4}-\d{2}-\d{2}\b/.test(s)) return true
-  if (/\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/.test(s)) return true
-  if (/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b\s*\d{1,2}\b/.test(s)) return true
-  return false
-}
-
-function lineStartsWithDayToken(line: string): number | null {
-  const m = line.match(/^\s*(?:[-–—*•●▪■]\s*)?(?:(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|m|t|w|th|f|su|tu)\.?\s+)?(\d{1,2})(?:st|nd|rd|th)?(?!\d)/i)
-  if (!m) return null
-  const d = parseInt(m[1], 10)
-  if (d < 1 || d > 31) return null
-  return d
 }
 
 function applyMonthContext(raw: string): string {
@@ -425,8 +437,41 @@ function applyMonthContext(raw: string): string {
 
 async function extractTextFromDocxWithContext(file: File): Promise<string> {
   const raw = await extractTextFromDocx(file)
-  const contextual = applyMonthContext(raw)
-  return contextual
+  return applyMonthContext(raw)
+}
+
+function parseDocxTableLinesFast(structured: string): ParsedEvent[] {
+  const out: ParsedEvent[] = []
+  const lines = structured.split("\n")
+  for (const line of lines) {
+    const m = line.match(
+      new RegExp(String.raw`^\s*\(?\s*(\d{1,2})\s*${SLASH_CLASS}\s*(\d{1,2})(?:\s*${SLASH_CLASS}\s*(\d{2,4}))?\s*\)?\s*\|\s*[^|]*\|\s*(.+)$`, "i")
+    )
+    if (!m) continue
+    const mm = parseInt(m[1], 10)
+    const dd = parseInt(m[2], 10)
+    let yy = m[3] ? parseInt(m[3], 10) : DateTime.now().year
+    if (yy < 100) yy += 2000
+    const dt = DateTime.fromObject({ year: yy, month: mm, day: dd })
+    if (!dt.isValid) continue
+    const date = dt.toFormat("yyyy-LL-dd")
+    const nameRaw = m[4].trim()
+    if (!nameRaw) continue
+    let tag: string | null = null
+    const low = nameRaw.toLowerCase()
+    if (/mid-?module|module|quiz/.test(low)) tag = "Quiz"
+    else if (/exam|test|final/.test(low)) tag = "Exam"
+    else if (/lab/.test(low)) tag = "Lab"
+    else if (/discussion/.test(low)) tag = "Class"
+    else if (/assignment|paper|submission|submit|practice problems|problems|web-based activity|course connections/i.test(low)) tag = "Assignment"
+    out.push({
+      event_name: nameRaw,
+      event_date: date,
+      event_time: /due|submit|submission/i.test(low) ? "23:59" : null,
+      event_tag: tag
+    })
+  }
+  return out
 }
 
 async function extractTextFromXlsxLegacy(file: File): Promise<string> {
@@ -524,23 +569,6 @@ async function extractTextFromPdf(file: File): Promise<string> {
     if (text) allLines.push(text)
   }
   return allLines.join("\n")
-}
-
-function denoiseLine(line: string): string {
-  let s = line
-  s = s.replace(/(^|\s)(M|T|Tu|Tue|Tues|W|Th|Thu|Thur|Thurs|F|Fr|Fri|Sat|Sun|Su)(?=\s|$)/gi, " ")
-  s = s.replace(/\b(Sec(t(ion)?)?\.?\s*[A-Za-z0-9\-]+)\b/gi, " ")
-  s = s.replace(/\b(Room|Rm\.?|Bldg|Building|Hall|Campus|Location)\s*[:#]?\s*[A-Za-z0-9\-\.\(\)]+/gi, " ")
-  s = s.replace(/\b(Zoom|Online|In[-\s]?Person)\b/gi, " ")
-  s = s.replace(/\b(CRN|Course\s*ID)\s*[:#]?\s*[A-Za-z0-9\-]+\b/gi, " ")
-  s = s.replace(/[•●▪■]/g, "-").replace(/\s{2,}/g, " ").trim()
-  return s
-}
-
-function toStructuredPlainText(raw: string): string {
-  const cleaned = (raw || "").replace(/\r/g, "\n").replace(/\t/g, " ").replace(/\s+\n/g, "\n").replace(/\n{2,}/g, "\n").trim()
-  const lines = cleaned.split("\n").map((l) => denoiseLine(l)).filter(Boolean)
-  return lines.join("\n")
 }
 
 function chunkLines(lines: string[], maxLines: number, maxChars: number): string[] {
@@ -814,11 +842,21 @@ export class OpenAIFilesService {
     }
 
     if (!raw?.trim()) throw new Error("No text could be extracted from the file.")
+
     const structured = toStructuredPlainText(raw)
+
+    const fastDocxEvents =
+      (type.includes("word") || name.endsWith(".docx"))
+        ? parseDocxTableLinesFast(structured)
+        : []
+
     const estimatedTokens = estimateTokens(structured)
     if (estimatedTokens > MAX_CONTENT_TOKENS) {
-      throw new Error(`Document contains too much information (~${estimatedTokens} tokens). Please upload a smaller section. Maximum allowed: ${MAX_CONTENT_TOKENS} tokens.`)
+      const events = dedupeEvents(postNormalizeEvents(fastDocxEvents))
+      events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+      return { events, tokensUsed: 0 }
     }
+
     const lines = structured.split("\n")
     const batches = chunkLines(lines, MAX_LINES_PER_TEXT_BATCH, MAX_CHARS_PER_TEXT_BATCH)
     let tokens = 0
@@ -830,6 +868,8 @@ export class OpenAIFilesService {
       const evsCapped = evs.slice(0, BATCH_EVENT_CAP)
       allEvents.push(...evsCapped)
     }
+    allEvents.push(...fastDocxEvents)
+
     allEvents = postNormalizeEvents(allEvents)
     allEvents = dedupeEvents(allEvents)
     allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
