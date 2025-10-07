@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './HamburgerMenu.css';
 
@@ -9,6 +9,13 @@ interface HamburgerMenuProps {
 export function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { signOut } = useAuth();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isOpen) root.classList.add('menu-open');
+    else root.classList.remove('menu-open');
+    return () => root.classList.remove('menu-open');
+  }, [isOpen]);
 
   const handleSignOut = async () => {
     try {
@@ -36,7 +43,7 @@ export function HamburgerMenu({ onNavigate }: HamburgerMenuProps) {
       {isOpen && (
         <>
           <div className="menu-overlay" onClick={() => setIsOpen(false)} />
-          <nav className="hamburger-menu slide-in-right">
+          <nav className="hamburger-menu slide-in-from-left">
             <ul className="menu-list">
               <li>
                 <button onClick={() => handleNavigation('settings')}>Settings</button>
