@@ -4,6 +4,8 @@ import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import './EventInput.css';
+import { createPortal } from 'react-dom';
+
 
 type Mode = 'standard' | 'education' | 'work' | 'enterprise';
 
