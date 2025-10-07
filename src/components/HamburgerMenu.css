@@ -4,8 +4,8 @@
   left: 16px;
   z-index: 1000;
   padding: 12px;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -14,10 +14,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hamburger-button {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+  }
 }
 
 .hamburger-button:hover {
-  background-color: var(--bg-hover);
+  transform: translateY(-1px);
 }
 
 .hamburger-icon {
@@ -65,13 +74,26 @@
   bottom: 0;
   width: 280px;
   max-width: 80vw;
-  background-color: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(0, 0, 0, 0.15);
   z-index: 1001;
-  padding: 24px 0;
-  box-shadow: var(--shadow-lg);
+  padding: 16px 0;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.24);
   display: flex;
   flex-direction: column;
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hamburger-menu {
+    background: rgba(255, 255, 255, 0.06);
+    border-right: 1px solid rgba(255, 255, 255, 0.22);
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.25s ease both;
 }
 
 .menu-list {
@@ -90,19 +112,30 @@
 .menu-list button {
   width: 100%;
   text-align: left;
-  padding: 14px 24px;
+  padding: 14px 20px;
   color: var(--text-primary);
   font-size: 1rem;
-  font-weight: 500;
-  background: none;
+  font-weight: 600;
+  background: transparent;
   border: none;
   cursor: pointer;
-  transition: color 0.2s ease, transform 0.06s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.06s ease;
+  border-radius: 10px;
+  margin: 0 12px;
 }
 
-.menu-list button:hover {
-  color: var(--primary);
-  background: transparent;
+.menu-list button:hover,
+.menu-list button:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-primary);
+  outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .menu-list button:hover,
+  .menu-list button:focus-visible {
+    background: rgba(255, 255, 255, 0.14);
+  }
 }
 
 .menu-list button:active {
@@ -116,6 +149,11 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(-16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
 @media (max-width: 768px) {
