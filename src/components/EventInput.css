@@ -4,13 +4,6 @@
   --pill-height: 56px;
   --loading-bg: #000000;
   --loading-fg: #ffffff;
-  --glass-bg: rgba(255, 255, 255, 0.35);
-  --glass-border: rgba(0, 0, 0, 0.10);
-  --glass-btn-bg: rgba(255, 255, 255, 0.50);
-  --glass-btn-border: rgba(0, 0, 0, 0.14);
-  --glass-btn-hover: rgba(255, 255, 255, 0.65);
-  --glass-blur: 48px;
-  --glass-sat: 220%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -18,11 +11,6 @@
     --highlight-color: white;
     --loading-bg: #ffffff;
     --loading-fg: #000000;
-    --glass-bg: rgba(255, 255, 255, 0.06);
-    --glass-border: rgba(255, 255, 255, 0.18);
-    --glass-btn-bg: rgba(255, 255, 255, 0.10);
-    --glass-btn-border: rgba(255, 255, 255, 0.22);
-    --glass-btn-hover: rgba(255, 255, 255, 0.18);
   }
 }
 
@@ -63,37 +51,24 @@
   justify-content: center;
   width: 100%;
   height: var(--pill-height);
-  background: var(--glass-bg);
-  border: 2px solid var(--glass-border);
+  background-color: var(--bg-primary);
+  border: 2px solid var(--border-color);
   border-radius: 999px;
   padding: 0 56px;
   transition: all 0.2s ease;
   pointer-events: auto;
-  box-shadow: 0 0 16px rgba(0,0,0,0.2);
-  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
-}
-
-.pill-input-container::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 100%);
-  pointer-events: none;
+  box-shadow: 0 0 16px rgba(0,0,0,0.12);
 }
 
 .pill-input-container:focus-within {
-  border-color: var(--glass-border);
+  border-color: var(--border-color);
   box-shadow: none;
 }
 
 .pill-input-container.loading {
   background-color: var(--loading-bg);
   border-color: var(--loading-bg);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.3);
 }
 
 .pill-loading-content {
@@ -157,10 +132,10 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid var(--glass-btn-border);
+  border: 1px solid var(--border-color);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: var(--glass-btn-bg);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
 }
 
@@ -169,7 +144,7 @@
 
 .pill-plus-btn:hover:not(:disabled),
 .pill-submit-btn:hover:not(:disabled) {
-  background-color: var(--glass-btn-hover);
+  background-color: var(--bg-hover);
   transform: translateY(-50%) scale(1.05);
 }
 
@@ -183,9 +158,7 @@
   position: fixed;
   inset: 0;
   z-index: 1450;
-  background: rgba(0, 0, 0, 0.35);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  background: transparent;
 }
 
 .input-popup {
@@ -193,25 +166,14 @@
   bottom: calc(100% + 8px);
   left: 8px;
   margin: 0;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.28);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
   overflow: hidden;
   min-width: 220px;
   z-index: 1460;
   animation: slideUp 0.2s ease;
-  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
-}
-
-.input-popup::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 100%);
 }
 
 .popup-option {
@@ -235,7 +197,7 @@
 }
 
 .popup-option:hover {
-  background: var(--glass-btn-hover);
+  background: var(--bg-hover);
 }
 
 .popup-option svg {
@@ -282,8 +244,8 @@
 .pill-full-btn {
   width: 100%;
   display: block;
-  border: 2px solid var(--glass-border);
-  background: var(--glass-bg);
+  border: 2px solid var(--border-color);
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   border-radius: 999px;
   padding: 12px 56px;
@@ -292,13 +254,11 @@
   text-align: center;
   transition: all 0.2s ease;
   height: var(--pill-height);
-  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
 }
 
 .pill-full-btn:hover:not(:disabled),
 .pill-full-btn:focus-visible {
-  background-color: var(--glass-btn-hover);
+  background-color: var(--bg-hover);
   outline: none;
 }
 
