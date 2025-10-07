@@ -168,6 +168,8 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
     }
   };
 
+  const hasText = textInput.trim().length > 0;
+
   const overlay = (
     <>
       <div className="event-input-fixed" role="region" aria-label="Event input">
@@ -198,7 +200,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
                     handleTextSubmit();
                   }
                 }}
-                placeholder="Create events"
+                placeholder="Start Typing"
                 className="pill-input"
                 disabled={loading}
               />
@@ -212,20 +214,17 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
-              <button
-                className="pill-submit-btn"
-                onClick={handleTextSubmit}
-                disabled={loading || !textInput.trim()}
-                title="Create event"
-              >
-                {loading ? (
-                  <div className="loading-spinner-small" />
-                ) : (
+              {hasText && !loading && (
+                <button
+                  className="pill-submit-btn"
+                  onClick={handleTextSubmit}
+                  title="Create event"
+                >
                   <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                   </svg>
-                )}
-              </button>
+                </button>
+              )}
               {showPopup && (
                 <div className="input-popup">
                   <button
@@ -248,7 +247,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
                     }}
                   >
                     <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2z" />
                     </svg>
                     Upload Picture
                   </button>
