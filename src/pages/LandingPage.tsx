@@ -1,17 +1,25 @@
+// src/pages/LandingPage.tsx
+import { useState } from 'react';
 import { HamburgerMenu } from '../components/HamburgerMenu';
-import { SubscriptionCard } from '../components/SubscriptionCard';
 import { WeekAtAGlance } from '../components/WeekAtAGlance';
-import { AssignmentsDue } from '../components/AssignmentsDue';
-import { useMode } from '../contexts/ModeContext';
+import { CalendarView } from '../components/CalendarView';
+import { EventInput } from '../components/EventInput';
+import type { ParsedEvent } from '../services/openai';
 import './LandingPage.css';
 
 interface LandingPageProps {
   onNavigate: (page: string) => void;
   onDateClick: (date: Date) => void;
+  onEventsExtracted: (events: ParsedEvent[]) => void;
 }
 
-export function LandingPage({ onNavigate, onDateClick }: LandingPageProps) {
-  const { mode } = useMode();
+export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: LandingPageProps) {
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+    onDateClick?.(date);
+  };
 
   return (
     <div className="landing-page">
@@ -19,9 +27,18 @@ export function LandingPage({ onNavigate, onDateClick }: LandingPageProps) {
 
       <div className="landing-container">
         <main className="landing-content">
-          <SubscriptionCard />
-          {mode === 'education' && <AssignmentsDue onDateClick={onDateClick} />}
-          <WeekAtAGlance onDateClick={onDateClick} />
+          {/* 1) Week at a Glance */}
+          <WeekAtAGlance onDateClick={handleDateSelect} />
+
+          {/* 2) Calendar */}
+          <CalendarView
+            selectedDate={selectedDate}
+            onDateSelect={handleDateSelect}
+            onEventClick={() => {}}
+          />
+
+          {/* 3) Input method (fixed-bottom pill via CSS) */}
+          <EventInput onEventsExtracted={onEventsExtracted} />
         </main>
       </div>
     </div>
