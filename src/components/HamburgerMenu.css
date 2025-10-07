@@ -1,8 +1,27 @@
+:root {
+  --menu-width: 280px;
+}
+
+@media (max-width: 768px) {
+  :root { --menu-width: 260px; }
+}
+
+html.menu-open #root {
+  transform: translateX(var(--menu-width));
+  filter: blur(8px) saturate(140%);
+  transition: transform 0.25s ease, filter 0.25s ease;
+  will-change: transform, filter;
+}
+
+html.menu-open, html.menu-open body {
+  overflow: hidden;
+}
+
 .hamburger-button {
   position: fixed;
   top: 16px;
   left: 16px;
-  z-index: 1000;
+  z-index: 1002;
   padding: 12px;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(0, 0, 0, 0.15);
@@ -63,7 +82,7 @@
   position: fixed;
   inset: 0;
   background: transparent;
-  z-index: 999;
+  z-index: 1000;
   animation: fadeIn 0.2s ease;
 }
 
@@ -72,7 +91,7 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 280px;
+  width: var(--menu-width);
   max-width: 80vw;
   background: rgba(255, 255, 255, 0.12);
   border-right: 1px solid rgba(0, 0, 0, 0.15);
@@ -93,8 +112,8 @@
   }
 }
 
-.slide-in-right {
-  animation: slideInRight 0.25s ease both;
+.slide-in-from-left {
+  animation: slideInFromLeft 0.25s ease both;
 }
 
 .menu-list {
@@ -151,13 +170,7 @@
   to { opacity: 1; }
 }
 
-@keyframes slideInRight {
-  from { transform: translateX(-16px); opacity: 0; }
+@keyframes slideInFromLeft {
+  from { transform: translateX(-100%); opacity: 0.8; }
   to { transform: translateX(0); opacity: 1; }
-}
-
-@media (max-width: 768px) {
-  .hamburger-menu {
-    width: 260px;
-  }
 }
