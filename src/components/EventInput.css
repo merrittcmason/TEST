@@ -14,15 +14,9 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.pill-input-container.loading {
-  background-color: var(--pill-loading-fill);
-  border-color: var(--pill-loading-fill);
-}
-
-.pill-input-container.loading .pill-plus-btn,
-.pill-input-container.loading .pill-submit-btn {
-  background-color: var(--pill-loading-fill);
-  color: var(--pill-loading-text);
+.pill-input-container:focus-within {
+  border-color: var(--highlight-color);
+  box-shadow: 0 0 0 1px var(--highlight-color);
 }
 
 .pill-input-container.loading {
