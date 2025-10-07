@@ -1,5 +1,6 @@
 :root {
   --menu-width: 280px;
+  --menu-blur: 6px;
 }
 
 @media (max-width: 768px) {
@@ -8,12 +9,13 @@
 
 html.menu-open #root {
   transform: translateX(var(--menu-width));
-  filter: blur(8px) saturate(140%);
+  filter: blur(var(--menu-blur)) saturate(130%);
   transition: transform 0.25s ease, filter 0.25s ease;
   will-change: transform, filter;
 }
 
-html.menu-open, html.menu-open body {
+html.menu-open,
+html.menu-open body {
   overflow: hidden;
 }
 
