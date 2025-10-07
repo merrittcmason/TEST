@@ -1,32 +1,18 @@
 import { useEffect, useState } from 'react';
-import type { ParsedEvent } from '../services/openaiStandard';
+import type { ParsedEvent } from '../services/openai';
+import { OpenAITextService, OpenAIFilesService } from '../services/openai';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import './EventInput.css';
 import { createPortal } from 'react-dom';
 
-type Mode = 'standard' | 'education' | 'work' | 'enterprise';
-
 interface EventInputProps {
   onEventsExtracted: (events: ParsedEvent[]) => void;
   onResumeDrafts?: (drafts: ParsedEvent[]) => void;
-  mode?: Mode;
 }
 
-type ServiceModule = {
-  OpenAITextService: { parseNaturalLanguage: (text: string) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
-  OpenAIFilesService: { parseFile: (file: File) => Promise<{ events: ParsedEvent[]; tokensUsed: number }> };
-};
-
-const serviceLoaders: Record<Mode, () => Promise<ServiceModule>> = {
-  standard: () => import('../services/openaiStandard') as unknown as Promise<ServiceModule>,
-  education: () => import('../services/openaiEducation') as unknown as Promise<ServiceModule>,
-  work: () => import('../services/openaiWork') as unknown as Promise<ServiceModule>,
-  enterprise: () => import('../services/openaiEnterprise') as unknown as Promise<ServiceModule>,
-};
-
-export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard' }: EventInputProps) {
+export function EventInput({ onEventsExtracted, onResumeDrafts }: EventInputProps) {
   const { user } = useAuth();
   const [textInput, setTextInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,11 +21,6 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
   const [hasDrafts, setHasDrafts] = useState(false);
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const getServices = () => {
-    const loader = serviceLoaders[mode as Mode] || serviceLoaders.standard;
-    if (typeof loader !== 'function') return serviceLoaders.standard();
-    return loader();
-  };
 
   const refreshDraftsFlag = async () => {
     if (!user) return;
@@ -89,7 +70,6 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
     setLoading(true);
     try {
       await checkQuotas(false);
-      const { OpenAITextService } = await getServices();
       const result = await OpenAITextService.parseNaturalLanguage(textInput);
       if (result.events.length === 0) {
         setError('No events found. Please try rephrasing your input.');
@@ -120,7 +100,6 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
     setLoading(true);
     try {
       await checkQuotas(true);
-      const { OpenAIFilesService } = await getServices();
       const result = await OpenAIFilesService.parseFile(file);
       if (result.events.length === 0) {
         setError('No events found in the file.');
@@ -149,7 +128,6 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
         event_date: d.event_date ?? d.date ?? '',
         event_time: d.event_time ?? d.time ?? null,
         event_tag: d.event_tag ?? d.tag ?? null,
-        event_label: d.label ?? null,
       }));
       if (mapped.length === 0) {
         setHasDrafts(false);
