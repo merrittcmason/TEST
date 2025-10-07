@@ -24,14 +24,7 @@
   }
 }
 
-.event-input {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
-  width: 100%;
-}
+.event-input { background: none; border: 0; border-radius: 0; padding: 0; box-shadow: none; width: 100%; }
 
 .event-input-fixed {
   position: fixed;
@@ -43,15 +36,13 @@
   pointer-events: none;
 }
 
-.event-input-fixed *:focus,
-.event-input-fixed *:focus-visible {
-  outline: none;
-  box-shadow: none;
+html.menu-open .event-input-fixed {
+  transform: translateX(calc(-50% + var(--menu-width)));
 }
 
-.event-input-fixed * {
-  -webkit-tap-highlight-color: transparent;
-}
+.event-input-fixed *:focus,
+.event-input-fixed *:focus-visible { outline: none; box-shadow: none; }
+.event-input-fixed * { -webkit-tap-highlight-color: transparent; }
 
 .pill-input-container {
   box-sizing: border-box;
@@ -81,9 +72,7 @@
   pointer-events: none;
 }
 
-.pill-input-container:focus-within {
-  box-shadow: none;
-}
+.pill-input-container:focus-within { box-shadow: none; }
 
 .pill-input-container.loading {
   background-color: var(--loading-bg);
@@ -92,21 +81,8 @@
   box-shadow: 0 8px 28px rgba(0,0,0,0.45);
 }
 
-.pill-loading-content {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.loading-text {
-  color: var(--loading-fg);
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
+.pill-loading-content { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.loading-text { color: var(--loading-fg); font-size: 1rem; font-weight: 600; letter-spacing: 0.2px; }
 
 .loading-spinner-contrast {
   width: 20px;
@@ -117,13 +93,7 @@
   animation: spin 0.6s linear infinite;
 }
 
-.pill-working-area {
-  position: static;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-}
+.pill-working-area { position: static; width: 100%; height: 100%; display: flex; align-items: center; }
 
 .pill-input {
   flex: 1;
@@ -139,9 +109,7 @@
   align-items: center;
 }
 
-.pill-input::placeholder {
-  color: var(--text-secondary);
-}
+.pill-input::placeholder { color: var(--text-secondary); }
 
 .pill-plus-btn,
 .pill-submit-btn {
@@ -170,17 +138,9 @@
 }
 
 .pill-submit-btn:disabled,
-.pill-plus-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.pill-plus-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.input-popup-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1450;
-  background: transparent;
-}
+.input-popup-overlay { position: fixed; inset: 0; z-index: 1450; background: transparent; }
 
 .input-popup {
   position: absolute;
@@ -197,9 +157,7 @@
   animation: slideUp 0.2s ease;
 }
 
-.input-popup::before {
-  content: none;
-}
+.input-popup::before { content: none; }
 
 .popup-option {
   display: flex;
@@ -217,22 +175,12 @@
   transition: all 0.2s ease;
 }
 
-.popup-option + .popup-option {
-  border-top: none;
-}
+.popup-option + .popup-option { border-top: none; }
 
-.popup-option:hover {
-  background: var(--bg-hover);
-}
+.popup-option:hover { background: var(--bg-hover); }
 
-.popup-option svg {
-  flex-shrink: 0;
-  color: var(--text-secondary);
-}
-
-.popup-option:hover svg {
-  color: var(--primary);
-}
+.popup-option svg { flex-shrink: 0; color: var(--text-secondary); }
+.popup-option:hover svg { color: var(--primary); }
 
 .loading-spinner-small {
   width: 20px;
@@ -257,14 +205,8 @@
   text-align: center;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .pill-full-btn {
   width: 100%;
@@ -284,27 +226,15 @@
 }
 
 .pill-full-btn:hover:not(:disabled),
-.pill-full-btn:focus-visible {
-  background-color: var(--glass-btn-hover);
-  outline: none;
-}
+.pill-full-btn:focus-visible { background-color: var(--glass-btn-hover); outline: none; }
 
-.pill-full-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.pill-full-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 @media (max-width: 1000px) {
   .event-input-fixed { width: min(var(--pill-maxw), calc(100vw - 32px)); }
 }
 
 @media (max-width: 768px) {
-  .pill-plus-btn,
-  .pill-submit-btn {
-    width: 36px;
-    height: 36px;
-  }
-  .input-popup {
-    left: 0;
-  }
+  .pill-plus-btn, .pill-submit-btn { width: 36px; height: 36px; }
+  .input-popup { left: 0; }
 }
