@@ -10,6 +10,7 @@
   --glass-btn-bg: rgba(255, 255, 255, 0.50);
   --glass-btn-border: rgba(0, 0, 0, 0.14);
   --glass-btn-hover: rgba(255, 255, 255, 0.65);
+  --menu-blur: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -34,10 +35,12 @@
   z-index: 1400;
   width: var(--pill-maxw);
   pointer-events: none;
+  transition: transform 0.25s ease, filter 0.25s ease;
 }
 
 html.menu-open .event-input-fixed {
   transform: translateX(calc(-50% + var(--menu-width)));
+  filter: blur(var(--menu-blur)) saturate(130%);
 }
 
 .event-input-fixed *:focus,
