@@ -312,3 +312,35 @@ a:hover {
     transform: translateX(0);
   }
 }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.25) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255,255,255,.25);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255,255,255,.4);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+* { scrollbar-color: transparent transparent; }
+*::-webkit-scrollbar-thumb { background-color: transparent; }
+*::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.35); }
