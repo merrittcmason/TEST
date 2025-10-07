@@ -26,10 +26,11 @@
 .event-input-fixed {
   position: fixed;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
   z-index: 1400;
-  width: var(--pill-maxw);
+  width: 100%;
+  padding: 0 16px;
   pointer-events: none;
 }
 
@@ -39,8 +40,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--pill-maxw);
+  width: 100%;
+  max-width: var(--pill-maxw);
   height: var(--pill-height);
+  margin: 0 auto;
   background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 999px;
@@ -248,19 +251,11 @@
   cursor: not-allowed;
 }
 
-@media (max-width: 1000px) {
-  .event-input-fixed { width: 100vw; }
-  .pill-input-container { width: min(var(--pill-maxw), calc(100vw - 32px)); }
-}
-
 @media (max-width: 768px) {
   .pill-plus-btn,
   .pill-submit-btn {
     width: 36px;
     height: 36px;
-  }
-  .pill-input-container {
-    padding: 0 50px;
   }
   .input-popup {
     left: 0;
