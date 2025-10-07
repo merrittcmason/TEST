@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ParsedEvent } from '../services/openaiStandard';
+import type { ParsedEvent } from '../services/openai';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -85,6 +85,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
       return;
     }
     setError('');
+    setShowPopup(false);
     setLoading(true);
     try {
       await checkQuotas(false);
@@ -116,6 +117,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
       return;
     }
     setError('');
+    setShowPopup(false);
     setLoading(true);
     try {
       await checkQuotas(true);
@@ -142,6 +144,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
     }
     try {
       setLoading(true);
+      setShowPopup(false);
       const drafts = await DatabaseService.getDraftEvents(user.id);
       const mapped: ParsedEvent[] = (drafts || []).map((d: any) => ({
         event_name: d.event_name ?? d.name ?? '',
@@ -184,8 +187,8 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
   }
 
   return (
-    <div className="event-input">
-      <div className="pill-input-container">
+    <div className="event-input" aria-live="polite">
+      <div className={`pill-input-container${loading ? ' loading' : ''}`}>
         <input
           type="text"
           value={textInput}
@@ -200,24 +203,32 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
           className="pill-input"
           disabled={loading}
         />
+        {loading && (
+          <div className="pill-loading-overlay" role="status">
+            <div className="loading-spinner-large" aria-hidden="true" />
+            <span>Creating Events...</span>
+          </div>
+        )}
+        {!loading && (
+          <button
+            className="pill-plus-btn"
+            onClick={() => setShowPopup(!showPopup)}
+            disabled={loading}
+            title="Add from file or camera"
+          >
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
         <button
-          className="pill-plus-btn"
-          onClick={() => setShowPopup(!showPopup)}
-          disabled={loading}
-          title="Add from file or camera"
-        >
-          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-        <button
-          className="pill-submit-btn"
+          className={`pill-submit-btn${loading ? ' loading' : ''}`}
           onClick={handleTextSubmit}
           disabled={loading || !textInput.trim()}
           title="Create event"
         >
           {loading ? (
-            <div className="loading-spinner-small" />
+            <div className="loading-spinner-small" aria-hidden="true" />
           ) : (
             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />

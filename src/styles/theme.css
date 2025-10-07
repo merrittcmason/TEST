@@ -8,6 +8,11 @@
   --text-secondary: #b3b3b3;
   --text-tertiary: #808080;
 
+  --highlight-color: #ffffff;
+  --pill-loading-fill: #ffffff;
+  --pill-loading-text: #000000;
+  --spinner-color: #000000;
+
   --border-color: #333333;
   --border-light: #2a2a2a;
 
@@ -45,6 +50,11 @@
   --text-primary: #000000;
   --text-secondary: #4d4d4d;
   --text-tertiary: #808080;
+
+  --highlight-color: #000000;
+  --pill-loading-fill: #000000;
+  --pill-loading-text: #ffffff;
+  --spinner-color: #ffffff;
 
   --border-color: #e0e0e0;
   --border-light: #f0f0f0;

@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { CalendarView } from '../components/CalendarView';
-import { EventInput } from '../components/EventInput';
 import { HamburgerMenu } from '../components/HamburgerMenu';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { useMode, MODE_CONFIG } from '../contexts/ModeContext';
-import type { ParsedEvent } from '../services/openai';
 import type { Database } from '../lib/supabase';
 import './CalendarPage.css';
 
@@ -16,10 +14,9 @@ interface CalendarPageProps {
   initialDate?: Date;
   selectedEvent?: Event | null;
   onNavigate: (page: string) => void;
-  onEventsExtracted: (events: ParsedEvent[]) => void;
 }
 
-export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavigate, onEventsExtracted }: CalendarPageProps) {
+export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavigate }: CalendarPageProps) {
   const { user } = useAuth();
   const { mode } = useMode();
   const [selectedDate, setSelectedDate] = useState(initialDate || new Date());
@@ -156,8 +153,6 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
             onDateSelect={handleDateSelect}
             onEventClick={handleEventClick}
           />
-
-          <EventInput onEventsExtracted={onEventsExtracted} />
         </main>
       </div>
 
