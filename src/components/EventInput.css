@@ -43,6 +43,16 @@
   pointer-events: none;
 }
 
+.event-input-fixed *:focus,
+.event-input-fixed *:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.event-input-fixed * {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .pill-input-container {
   box-sizing: border-box;
   position: relative;
@@ -72,8 +82,8 @@
 }
 
 .pill-input-container:focus-within {
-  border-color: var(--highlight-color);
-  box-shadow: 0 0 0 1px var(--highlight-color);
+  border-color: var(--glass-border);
+  box-shadow: none;
 }
 
 .pill-input-container.loading {
