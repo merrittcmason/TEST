@@ -77,12 +77,13 @@
   background: rgba(255, 255, 255, 0.12);
   border-right: 1px solid rgba(0, 0, 0, 0.15);
   z-index: 1001;
-  padding: 16px 0;
+  padding: 16px 12px;
   box-shadow: 0 10px 28px rgba(0,0,0,0.24);
   display: flex;
   flex-direction: column;
   -webkit-backdrop-filter: saturate(180%) blur(18px);
   backdrop-filter: saturate(180%) blur(18px);
+  overflow: hidden;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -98,11 +99,11 @@
 
 .menu-list {
   list-style: none;
-  padding: 8px 0;
+  padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .menu-list li {
@@ -112,7 +113,7 @@
 .menu-list button {
   width: 100%;
   text-align: left;
-  padding: 14px 20px;
+  padding: 14px 16px;
   color: var(--text-primary);
   font-size: 1rem;
   font-weight: 600;
@@ -121,7 +122,6 @@
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, transform 0.06s ease;
   border-radius: 10px;
-  margin: 0 12px;
 }
 
 .menu-list button:hover,
