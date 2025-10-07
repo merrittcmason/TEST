@@ -187,7 +187,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
   }
 
   return (
-    <div className="event-input" aria-live="polite">
+    <div className="event-input">
       <div className={`pill-input-container${loading ? ' loading' : ''}`}>
         <input
           type="text"
@@ -204,23 +204,20 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
           disabled={loading}
         />
         {loading && (
-          <div className="pill-loading-overlay" role="status">
-            <div className="loading-spinner-large" aria-hidden="true" />
-            <span>Creating Events...</span>
+          <div className="pill-loading-overlay" role="status" aria-live="polite">
+            Creating Events...
           </div>
         )}
-        {!loading && (
-          <button
-            className="pill-plus-btn"
-            onClick={() => setShowPopup(!showPopup)}
-            disabled={loading}
-            title="Add from file or camera"
-          >
-            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        )}
+        <button
+          className="pill-plus-btn"
+          onClick={() => setShowPopup(!showPopup)}
+          disabled={loading}
+          title="Add from file or camera"
+        >
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
         <button
           className={`pill-submit-btn${loading ? ' loading' : ''}`}
           onClick={handleTextSubmit}

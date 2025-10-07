@@ -173,12 +173,11 @@ function AppContent() {
   }
 
   return (
-    <>
-      <LandingPage onNavigate={handleNavigate} onDateClick={handleDayClick} />
-      <div className="event-input-floating">
-        <EventInput onEventsExtracted={handleEventsExtracted} mode={mode} />
-      </div>
-    </>
+    <LandingPage
+      onNavigate={handleNavigate}
+      onDateClick={handleDayClick}
+      onEventsExtracted={handleEventsExtracted}
+    />
   );
 }
 

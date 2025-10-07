@@ -10,6 +10,11 @@
   padding: 80px 16px 24px;
 }
 
+.landing-input-wrapper {
+  max-width: 640px;
+  margin: 0 auto 40px;
+}
+
 .landing-header {
   text-align: center;
   margin-bottom: 32px;
@@ -31,6 +36,10 @@
 @media (min-width: 768px) {
   .landing-container {
     padding: 100px 24px 24px;
+  }
+
+  .landing-input-wrapper {
+    margin-bottom: 48px;
   }
 
   .landing-title {
