@@ -4,6 +4,11 @@
   --pill-height: 56px;
   --loading-bg: #000000;
   --loading-fg: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-btn-bg: rgba(255, 255, 255, 0.12);
+  --glass-btn-border: rgba(255, 255, 255, 0.28);
+  --glass-btn-hover: rgba(255, 255, 255, 0.22);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,13 +46,24 @@
   justify-content: center;
   width: 100%;
   height: var(--pill-height);
-  background-color: var(--bg-primary);
-  border: 2px solid var(--border-color);
+  background: var(--glass-bg);
+  border: 2px solid var(--glass-border);
   border-radius: 999px;
   padding: 0 56px;
   transition: all 0.2s ease;
   pointer-events: auto;
-  box-shadow: 0 0 16px rgba(0,0,0,0.4);
+  box-shadow: 0 0 16px rgba(0,0,0,0.25);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  backdrop-filter: saturate(160%) blur(12px);
+}
+
+.pill-input-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.04) 100%);
+  pointer-events: none;
 }
 
 .pill-input-container:focus-within {
@@ -58,6 +74,8 @@
 .pill-input-container.loading {
   background-color: var(--loading-bg);
   border-color: var(--loading-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: 0 8px 28px rgba(0,0,0,0.45);
 }
 
@@ -122,10 +140,10 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: none;
+  border: 1px solid var(--glass-btn-border);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: var(--bg-hover);
+  background-color: var(--glass-btn-bg);
   color: var(--text-primary);
 }
 
@@ -134,8 +152,7 @@
 
 .pill-plus-btn:hover:not(:disabled),
 .pill-submit-btn:hover:not(:disabled) {
-  background-color: var(--highlight-color);
-  color: var(--bg-primary);
+  background-color: var(--glass-btn-hover);
   transform: translateY(-50%) scale(1.05);
 }
 
@@ -224,8 +241,8 @@
 .pill-full-btn {
   width: 100%;
   display: block;
-  border: 2px solid var(--border-color);
-  background-color: var(--bg-primary);
+  border: 2px solid var(--glass-border);
+  background: var(--glass-bg);
   color: var(--text-primary);
   border-radius: 999px;
   padding: 12px 56px;
@@ -234,12 +251,13 @@
   text-align: center;
   transition: all 0.2s ease;
   height: var(--pill-height);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  backdrop-filter: saturate(160%) blur(12px);
 }
 
 .pill-full-btn:hover:not(:disabled),
 .pill-full-btn:focus-visible {
-  background-color: var(--highlight-color);
-  color: var(--bg-primary);
+  background-color: var(--glass-btn-hover);
   outline: none;
 }
 
