@@ -334,13 +334,3 @@ a:hover {
   background-clip: padding-box;
 }
 
-*::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255,255,255,.4);
-}
-
-*::-webkit-scrollbar-corner {
-  background: transparent;
-}
-* { scrollbar-color: transparent transparent; }
-*::-webkit-scrollbar-thumb { background-color: transparent; }
-*::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.35); }
