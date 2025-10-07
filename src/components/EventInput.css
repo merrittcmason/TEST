@@ -9,8 +9,8 @@
   --glass-btn-bg: rgba(255, 255, 255, 0.50);
   --glass-btn-border: rgba(0, 0, 0, 0.14);
   --glass-btn-hover: rgba(255, 255, 255, 0.65);
-  --glass-blur: 12px;
-  --glass-sat: 160%;
+  --glass-blur: 24px;
+  --glass-sat: 200%;
 }
 
 @media (prefers-color-scheme: dark) {
