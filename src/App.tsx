@@ -170,7 +170,6 @@ function AppContent() {
     <LandingPage
       onNavigate={handleNavigate}
       onDateClick={handleDayClick}
-      onEventsExtracted={handleEventsExtracted}
     />
   );
 }

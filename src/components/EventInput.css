@@ -1,34 +1,36 @@
 .event-input {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
   width: 100%;
+}
+
+:root {
+  --highlight-color: black;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --highlight-color: white;
+  }
 }
 
 .pill-input-container {
   position: relative;
   display: flex;
   align-items: center;
-  width: 100%;
-  padding: 4px 56px;
+  background-color: var(--bg-primary);
   border: 2px solid var(--border-color);
   border-radius: 999px;
-  background-color: var(--bg-primary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  padding: 4px 56px 4px 56px;
+  transition: all 0.2s ease;
 }
 
 .pill-input-container:focus-within {
   border-color: var(--highlight-color);
   box-shadow: 0 0 0 1px var(--highlight-color);
-}
-
-.pill-input-container.loading {
-  background-color: var(--pill-loading-fill);
-  border-color: var(--pill-loading-fill);
-  box-shadow: none;
-}
-
-.pill-input-container.loading .pill-plus-btn,
-.pill-input-container.loading .pill-submit-btn {
-  background-color: var(--pill-loading-fill);
-  color: var(--pill-loading-text);
 }
 
 .pill-input {
@@ -40,15 +42,10 @@
   color: var(--text-primary);
   padding: 12px 0;
   min-width: 0;
-  z-index: 0;
 }
 
 .pill-input::placeholder {
   color: var(--text-secondary);
-}
-
-.pill-input-container.loading .pill-input {
-  visibility: hidden;
 }
 
 .pill-plus-btn,
@@ -63,50 +60,39 @@
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition: all 0.2s ease;
   background-color: var(--bg-hover);
   color: var(--text-primary);
-  z-index: 2;
 }
 
-.pill-plus-btn {
-  left: 8px;
-}
-
-.pill-submit-btn {
-  right: 8px;
-}
+.pill-plus-btn { left: 8px; }
+.pill-submit-btn { right: 8px; }
 
 .pill-plus-btn:hover:not(:disabled),
 .pill-submit-btn:hover:not(:disabled) {
-  background-color: var(--highlight-color);
-  color: var(--pill-loading-fill);
+  background-color: var(--primary);
+  color: white;
   transform: translateY(-50%) scale(1.05);
 }
 
-.pill-submit-btn:disabled:not(.loading),
+.pill-submit-btn:disabled,
 .pill-plus-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.pill-submit-btn.loading {
-  background-color: var(--pill-loading-fill);
-  color: var(--pill-loading-text);
-  opacity: 1;
 }
 
 .input-popup {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 8px;
+  margin: 0;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   min-width: 200px;
-  z-index: 3;
+  z-index: 100;
   animation: slideUp 0.2s ease;
 }
 
@@ -123,7 +109,7 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .popup-option:hover {
@@ -136,31 +122,15 @@
 }
 
 .popup-option:hover svg {
-  color: var(--highlight-color);
-}
-
-.pill-loading-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: inherit;
-  background-color: var(--pill-loading-fill);
-  color: var(--pill-loading-text);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  pointer-events: none;
-  z-index: 1;
+  color: var(--primary);
 }
 
 .loading-spinner-small {
   width: 20px;
   height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
   border-radius: 50%;
-  border: 2px solid transparent;
-  border-top-color: var(--spinner-color);
-  border-right-color: var(--spinner-color);
   animation: spin 0.6s linear infinite;
 }
 
@@ -174,20 +144,12 @@
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 768px) {
@@ -196,14 +158,18 @@
     width: 36px;
     height: 36px;
   }
-
   .pill-input-container {
-    padding: 4px 50px;
+    padding: 4px 50px 4px 50px;
   }
-}
+  .input-popup {
+    left: 0;
+  }
+  :root { --highlight-color: black; }
+@media (prefers-color-scheme: dark) { :root { --highlight-color: white; } }
 
 .pill-full-btn {
   width: 100%;
+  display: block;
   border: 2px solid var(--border-color);
   background-color: var(--bg-primary);
   color: var(--text-primary);
@@ -212,13 +178,13 @@
   font-size: 1rem;
   font-weight: 600;
   text-align: center;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .pill-full-btn:hover:not(:disabled),
 .pill-full-btn:focus-visible {
   background-color: var(--highlight-color);
-  color: var(--pill-loading-fill);
+  color: var(--bg-primary);
   outline: none;
 }
 
@@ -226,3 +192,6 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+}
+

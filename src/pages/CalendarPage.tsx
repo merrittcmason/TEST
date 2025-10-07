@@ -157,7 +157,7 @@ export function CalendarPage({ initialDate, selectedEvent: initialEvent, onNavig
             onEventClick={handleEventClick}
           />
 
-          <EventInput onEventsExtracted={onEventsExtracted} mode={mode} />
+          <EventInput onEventsExtracted={onEventsExtracted} />
         </main>
       </div>
 
