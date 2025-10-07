@@ -333,32 +333,55 @@ async function extractTextFromDocx(file: File): Promise<string> {
   return lines.join("\n")
 }
 
-const MONTHS = [
+const MONTH_WORDS = [
   "january","february","march","april","may","june","july","august","september","october","november","december",
   "jan","feb","mar","apr","may","jun","jul","aug","sep","sept","oct","nov","dec"
 ]
 
-function isMonthHeader(line: string): { month: number; year: number | null } | null {
-  const s = line.trim().toLowerCase()
-  const m1 = s.match(/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b(?:[,\s]+(\d{4}))?$/i)
-  if (!m1) return null
-  const monthName = m1[1].toLowerCase()
-  const idx = MONTHS.indexOf(monthName)
-  const month = (["jan","january","feb","february","mar","march","apr","april","may","jun","june","jul","july","aug","august","sep","sept","september","oct","october","nov","november","dec","december"].indexOf(monthName) / 2 | 0) + 1
-  const year = m1[2] ? parseInt(m1[2], 10) : null
+function monthIndexFromWord(w: string): number | null {
+  const full = ["january","february","march","april","may","june","july","august","september","october","november","december"]
+  const short = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
+  const s = w.toLowerCase()
+  let idx = full.indexOf(s)
+  if (idx >= 0) return idx + 1
+  idx = short.indexOf(s)
+  if (idx >= 0) return idx + 1
+  if (s === "sept") return 9
+  return null
+}
+
+function detectMonthHeader(line: string): { month: number; year: number | null } | null {
+  const s = line.trim()
+  const lc = s.toLowerCase()
+  const hasDayNum = /\b([1-9]|[12]\d|3[01])\b/.test(lc)
+  const hasSlashDate = /\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/.test(lc)
+  if (hasDayNum || hasSlashDate) return null
+  const m = lc.match(/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b/i)
+  if (!m) return null
+  const y = lc.match(/\b(20\d{2})\b/)
+  const month = monthIndexFromWord(m[1])
+  const year = y ? parseInt(y[1], 10) : null
+  if (!month) return null
   return { month, year }
+}
+
+function detectYearOnly(line: string): number | null {
+  const m = line.trim().match(/^(19|20)\d{2}$/)
+  if (!m) return null
+  const y = parseInt(m[0], 10)
+  return y >= 1900 && y <= 2100 ? y : null
 }
 
 function lineHasExplicitMonthOrDate(line: string): boolean {
   const s = line.toLowerCase()
-  if (MONTHS.some(m => s.includes(m))) return true
-  if (/\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/.test(s)) return true
   if (/\b\d{4}-\d{2}-\d{2}\b/.test(s)) return true
+  if (/\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/.test(s)) return true
+  if (/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b\s*\d{1,2}\b/.test(s)) return true
   return false
 }
 
-function lineStartsWithDayOnly(line: string): number | null {
-  const m = line.match(/^\s*(\d{1,2})(?!\d)/)
+function lineStartsWithDayToken(line: string): number | null {
+  const m = line.match(/^\s*(?:[-–—*•●▪■]\s*)?(?:(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|m|t|w|th|f|su|tu)\.?\s+)?(\d{1,2})(?:st|nd|rd|th)?(?!\d)/i)
   if (!m) return null
   const d = parseInt(m[1], 10)
   if (d < 1 || d > 31) return null
@@ -371,7 +394,13 @@ function applyMonthContext(raw: string): string {
   let curYear: number = DateTime.now().year
   const out: string[] = []
   for (const line of lines) {
-    const hdr = isMonthHeader(line)
+    const yOnly = detectYearOnly(line)
+    if (yOnly) {
+      curYear = yOnly
+      out.push(line)
+      continue
+    }
+    const hdr = detectMonthHeader(line)
     if (hdr) {
       curMonth = hdr.month
       if (hdr.year) curYear = hdr.year
@@ -382,10 +411,10 @@ function applyMonthContext(raw: string): string {
       out.push(line)
       continue
     }
-    const day = lineStartsWithDayOnly(line)
+    const day = lineStartsWithDayToken(line)
     if (day && curMonth) {
       const dt = DateTime.fromObject({ year: curYear, month: curMonth, day })
-      const prefix = dt.isValid ? `${dt.toFormat("LLLL d, yyyy")} | ` : ""
+      const prefix = dt.isValid ? `${dt.toFormat("yyyy-LL-dd")} | ` : ""
       out.push(prefix + line)
     } else {
       out.push(line)
