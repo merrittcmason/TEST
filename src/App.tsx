@@ -5,7 +5,6 @@ import { LaunchScreen } from './components/LaunchScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { AuthPage } from './pages/AuthPage';
 import { LandingPage } from './pages/LandingPage';
-import { CalendarPage } from './pages/CalendarPage';
 import { EventConfirmation } from './pages/EventConfirmation';
 import { SettingsPage } from './pages/SettingsPage';
 import { AccountPage } from './pages/AccountPage';
@@ -14,8 +13,6 @@ import type { ParsedEvent } from './services/openai';
 import type { Database } from './lib/supabase';
 import { DatabaseService } from './services/database';
 import './styles/theme.css';
-
-// 👇 add supabase client for debug
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -30,7 +27,7 @@ const supabase = createClient(
   }
 );
 
-type Page = 'landing' | 'calendar' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
+type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
 type Event = Database['public']['Tables']['events']['Row'];
 
 function AppContent() {
@@ -39,7 +36,6 @@ function AppContent() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
 
@@ -69,7 +65,6 @@ function AppContent() {
   const handleLaunchComplete = () => {
     sessionStorage.setItem('hasVisited', 'true');
     setShowLaunch(false);
-
     if (user) {
       const hasSeenWelcome = sessionStorage.getItem('hasSeenWelcome');
       if (!hasSeenWelcome) {
@@ -89,8 +84,6 @@ function AppContent() {
 
   const handleDayClick = (date: Date) => {
     setSelectedDate(date);
-    setSelectedEvent(null);
-    setCurrentPage('calendar');
   };
 
   const handleEventsExtracted = (events: ParsedEvent[]) => {
@@ -100,15 +93,14 @@ function AppContent() {
 
   const handleEventsConfirmed = () => {
     setExtractedEvents([]);
-    setCurrentPage('calendar');
+    setCurrentPage('landing');
   };
 
   const handleEventsCancelled = () => {
     setExtractedEvents([]);
-    setCurrentPage('calendar');
+    setCurrentPage('landing');
   };
 
-  // 👇 special case: check if URL contains /debug-auth
   if (window.location.pathname === '/debug-auth') {
     return <DebugAuth />;
   }
@@ -143,17 +135,6 @@ function AppContent() {
     );
   }
 
-  if (currentPage === 'calendar') {
-    return (
-      <CalendarPage
-        initialDate={selectedDate || undefined}
-        selectedEvent={selectedEvent}
-        onNavigate={handleNavigate}
-        onEventsExtracted={handleEventsExtracted}
-      />
-    );
-  }
-
   if (currentPage === 'settings') {
     return <SettingsPage onNavigate={handleNavigate} />;
   }
@@ -170,11 +151,11 @@ function AppContent() {
     <LandingPage
       onNavigate={handleNavigate}
       onDateClick={handleDayClick}
+      onEventsExtracted={handleEventsExtracted}
     />
   );
 }
 
-// 👇 DebugAuth component definition
 function DebugAuth() {
   const [session, setSession] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
