@@ -12,6 +12,7 @@
   "dependencies": {
     "@stripe/stripe-js": "^7.9.0",
     "@supabase/supabase-js": "^2.58.0",
+    "chrono-node": "^2.9.0",
     "date-fns": "^4.1.0",
     "mammoth": "^1.11.0",
     "pdfjs-dist": "^5.4.149",
