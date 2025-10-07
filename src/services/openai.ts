@@ -23,17 +23,17 @@ export interface ParseResult {
 }
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
-const MAX_CONTENT_TOKENS = 2000
-const MAX_LINES_PER_TEXT_BATCH = 35
-const MAX_CHARS_PER_TEXT_BATCH = 1200
-const MAX_PDF_PAGES = 10
+const MAX_CONTENT_TOKENS = 8000
+const MAX_LINES_PER_TEXT_BATCH = 45
+const MAX_CHARS_PER_TEXT_BATCH = 2000
+const MAX_PDF_PAGES = 12
 const PDF_PAGES_PER_VISION_BATCH = 1
-const VISION_RENDER_SCALE = 1.4
+const VISION_RENDER_SCALE = 1.5
 const VISION_MODEL = "gpt-4o"
 const TEXT_MODEL = "gpt-4o"
-const MAX_TOKENS_TEXT = 550
-const MAX_TOKENS_VISION = 650
-const BATCH_EVENT_CAP = 60
+const MAX_TOKENS_TEXT = 700
+const MAX_TOKENS_VISION = 800
+const BATCH_EVENT_CAP = 500
 
 type AIDebugInfo = {
   mode: "text" | "vision"
@@ -78,6 +78,58 @@ function capTag(t: string | null | undefined): string | null {
   const s = t.trim()
   if (!s) return null
   return s[0].toUpperCase() + s.slice(1).toLowerCase()
+}
+
+function normDate(input: any): string | null {
+  if (input == null || input === "") return null
+  if (typeof input === "number") {
+    const d = XLSX.SSF.parse_date_code(input as any)
+    if (!d) return null
+    const dt = DateTime.fromObject({ year: d.y, month: d.m, day: d.d })
+    return dt.isValid ? dt.toFormat("yyyy-LL-dd") : null
+  }
+  const s = String(input).trim()
+  if (!s) return null
+  const tryLux = DateTime.fromISO(s)
+  if (tryLux.isValid) return tryLux.toFormat("yyyy-LL-dd")
+  const tryUs = DateTime.fromFormat(s, "M/d/yyyy")
+  if (tryUs.isValid) return tryUs.toFormat("yyyy-LL-dd")
+  const tryUs2 = DateTime.fromFormat(s, "M/d/yy")
+  if (tryUs2.isValid) return tryUs2.toFormat("yyyy-LL-dd")
+  const tryMd = DateTime.fromFormat(s, "M/d")
+  if (tryMd.isValid) return tryMd.set({ year: DateTime.now().year }).toFormat("yyyy-LL-dd")
+  const parsed = chrono.parseDate(s, new Date(), { forwardDate: true })
+  if (parsed) return DateTime.fromJSDate(parsed).toFormat("yyyy-LL-dd")
+  return null
+}
+
+function normTime(input: any): string | null {
+  if (input == null) return null
+  const raw = String(input).trim()
+  if (!raw || raw === "--:-- --") return null
+  if (/^\d{1,2}:\d{2}$/.test(raw)) return raw
+  const lower = raw.toLowerCase()
+  if (lower === "noon") return "12:00"
+  if (lower === "midnight") return "00:00"
+  const m1 = lower.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i)
+  if (m1) {
+    let hh = parseInt(m1[1], 10)
+    const mm = m1[2] ? parseInt(m1[2], 10) : 0
+    const ap = m1[3].toLowerCase()
+    if (ap === "pm" && hh !== 12) hh += 12
+    if (ap === "am" && hh === 12) hh = 0
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+  }
+  const m2 = lower.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i)
+  if (m2) {
+    let hh = parseInt(m2[1], 10)
+    const mm = parseInt(m2[2], 10)
+    const ap = m2[3].toLowerCase()
+    if (ap === "pm" && hh !== 12) hh += 12
+    if (ap === "am" && hh === 12) hh = 0
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+  }
+  return null
 }
 
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
@@ -229,7 +281,7 @@ async function extractTextFromDocx(file: File): Promise<string> {
   return lines.join("\n")
 }
 
-async function extractTextFromXlsx(file: File): Promise<string> {
+async function extractTextFromXlsxLegacy(file: File): Promise<string> {
   const data = await file.arrayBuffer()
   const wb = XLSX.read(data, { type: "array" })
   const parts: string[] = []
@@ -242,6 +294,61 @@ async function extractTextFromXlsx(file: File): Promise<string> {
     }
   }
   return parts.join("\n").trim()
+}
+
+function tryParseEventsFromSheet(sheet: XLSX.WorkSheet): ParsedEvent[] {
+  const json = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" })
+  if (!json.length) return []
+  const headers = Object.keys(json[0] || {}).map((h) => String(h).trim().toLowerCase())
+  const map = (name: string) => headers.find((h) => h === name) || headers.find((h) => h.includes(name))
+  const hAssignment = map("assignment") || map("event") || map("name") || map("title")
+  const hDate = map("due date") || map("date")
+  const hTime = map("time")
+  const hTag = map("tag") || map("category") || map("type")
+  if (!hAssignment || !hDate) return []
+  const out: ParsedEvent[] = []
+  for (const row of json) {
+    const a = String(row[hAssignment] ?? "").trim()
+    if (!a) continue
+    const d = normDate(row[hDate])
+    if (!d) continue
+    const t = normTime(row[hTime])
+    const tagRaw = row[hTag] != null ? String(row[hTag]) : ""
+    const ev: ParsedEvent = {
+      event_name: a,
+      event_date: d,
+      event_time: t,
+      event_tag: tagRaw ? capTag(tagRaw) : null
+    }
+    out.push(ev)
+  }
+  return out
+}
+
+async function extractEventsFromXlsx(file: File): Promise<ParsedEvent[]> {
+  const data = await file.arrayBuffer()
+  const wb = XLSX.read(data, { type: "array" })
+  let out: ParsedEvent[] = []
+  for (const name of wb.SheetNames) {
+    const sheet = wb.Sheets[name]
+    const parsed = tryParseEventsFromSheet(sheet)
+    if (parsed.length) out = out.concat(parsed)
+  }
+  if (out.length) return out
+  const legacy = await extractTextFromXlsxLegacy(file)
+  if (!legacy) return []
+  const structured = toStructuredPlainText(legacy)
+  const est = estimateTokens(structured)
+  if (est > MAX_CONTENT_TOKENS) return []
+  const lines = structured.split("\n")
+  const batches = chunkLines(lines, MAX_LINES_PER_TEXT_BATCH, MAX_CHARS_PER_TEXT_BATCH)
+  let all: ParsedEvent[] = []
+  for (let i = 0; i < batches.length; i++) {
+    const { parsed } = await callOpenAI_JSON_TextBatch(batches[i], i, batches.length)
+    const evs = (parsed.events || []) as ParsedEvent[]
+    all = all.concat(evs.slice(0, BATCH_EVENT_CAP))
+  }
+  return all
 }
 
 async function extractTextFromPdf(file: File): Promise<string> {
@@ -480,6 +587,7 @@ export class OpenAIFilesService {
       let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
       events = postNormalizeEvents(events)
       events = dedupeEvents(events)
+      events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed }
     }
 
@@ -504,7 +612,10 @@ export class OpenAIFilesService {
         }
         allEvents = postNormalizeEvents(allEvents)
         allEvents = dedupeEvents(allEvents)
-        if (allEvents.length > 0) return { events: allEvents, tokensUsed: tokens }
+        if (allEvents.length > 0) {
+          allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+          return { events: allEvents, tokensUsed: tokens }
+        }
       }
       const urls = await renderPdfToImages(file, MAX_PDF_PAGES, VISION_RENDER_SCALE)
       if (!urls.length) throw new Error("Could not render any PDF pages.")
@@ -520,15 +631,23 @@ export class OpenAIFilesService {
       }
       allEvents = postNormalizeEvents(allEvents)
       allEvents = dedupeEvents(allEvents)
+      allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events: allEvents, tokensUsed: tokens }
+    }
+
+    if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) {
+      let events = await extractEventsFromXlsx(file)
+      events = postNormalizeEvents(events)
+      events = dedupeEvents(events)
+      events = events.filter((e) => !!e.event_date)
+      events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+      return { events, tokensUsed: 0 }
     }
 
     let raw = ""
     if (type.includes("word") || name.endsWith(".docx")) {
       raw = await extractTextFromDocx(file)
-    } else if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
-      raw = await extractTextFromXlsx(file)
-    } else if (type.startsWith("text/") || name.endsWith(".txt")) {
+    } else if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) {
       raw = await file.text()
     } else {
       throw new Error(`Unsupported file type: ${type || name}`)
@@ -553,6 +672,7 @@ export class OpenAIFilesService {
     }
     allEvents = postNormalizeEvents(allEvents)
     allEvents = dedupeEvents(allEvents)
+    allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
     return { events: allEvents, tokensUsed: tokens }
   }
 }
@@ -628,6 +748,7 @@ export class OpenAITextService {
     const deterministic = resolveRelativeNL(text)
     if (deterministic.length) {
       const events = dedupeEvents(postNormalizeEvents(deterministic))
+      events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed: 0 }
     }
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -659,6 +780,7 @@ export class OpenAITextService {
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
+    events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
     return { events, tokensUsed }
   }
 }
