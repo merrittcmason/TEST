@@ -198,7 +198,7 @@ export function EventInput({ onEventsExtracted, onResumeDrafts, mode = 'standard
                     handleTextSubmit();
                   }
                 }}
-                placeholder="Start Typing"
+                placeholder="Start creating events..."
                 className="pill-input"
                 disabled={loading}
               />
