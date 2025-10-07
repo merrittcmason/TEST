@@ -1,8 +1,8 @@
 :root {
   --menu-width: 280px;
   --menu-blur: 6px;
-  --menu-item-hover: rgba(0, 0, 0, 0.08);
-  --menu-item-active: rgba(0, 0, 0, 0.12);
+  --menu-item-hover: rgba(0, 0, 0, 0.18);
+  --menu-item-active: rgba(0, 0, 0, 0.26);
 }
 
 @media (max-width: 768px) {
