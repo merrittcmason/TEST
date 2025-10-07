@@ -1,19 +1,10 @@
 :root {
   --menu-width: 280px;
   --menu-blur: 6px;
-  --menu-item-hover: rgba(0, 0, 0, 0.18);
-  --menu-item-active: rgba(0, 0, 0, 0.26);
 }
 
 @media (max-width: 768px) {
   :root { --menu-width: 260px; }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --menu-item-hover: rgba(255, 255, 255, 0.14);
-    --menu-item-active: rgba(255, 255, 255, 0.18);
-  }
 }
 
 html.menu-open #root {
@@ -142,13 +133,13 @@ html.menu-open body {
 
 .menu-list button:hover,
 .menu-list button:focus-visible {
-  background: var(--menu-item-hover);
+  background: var(--bg-hover);
   color: var(--text-primary);
   outline: none;
 }
 
 .menu-list button:active {
-  background: var(--menu-item-active);
+  background: var(--bg-hover);
   transform: translateY(1px);
 }
 
