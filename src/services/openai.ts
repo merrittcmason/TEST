@@ -80,6 +80,21 @@ function capTag(t: string | null | undefined): string | null {
   return s[0].toUpperCase() + s.slice(1).toLowerCase()
 }
 
+function normHeader(h: string): string {
+  return String(h || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+}
+
+function pickKey(headers: string[], aliases: string[]): string | null {
+  const normed = headers.map(normHeader)
+  const set = new Set(normed)
+  for (const a of aliases) if (set.has(a)) return a
+  for (let i = 0; i < headers.length; i++) {
+    const n = normed[i]
+    if (aliases.some((a) => n.includes(a))) return n
+  }
+  return null
+}
+
 function normDate(input: any): string | null {
   if (input == null || input === "") return null
   if (typeof input === "number") {
@@ -90,14 +105,14 @@ function normDate(input: any): string | null {
   }
   const s = String(input).trim()
   if (!s) return null
-  const tryLux = DateTime.fromISO(s)
-  if (tryLux.isValid) return tryLux.toFormat("yyyy-LL-dd")
-  const tryUs = DateTime.fromFormat(s, "M/d/yyyy")
-  if (tryUs.isValid) return tryUs.toFormat("yyyy-LL-dd")
-  const tryUs2 = DateTime.fromFormat(s, "M/d/yy")
-  if (tryUs2.isValid) return tryUs2.toFormat("yyyy-LL-dd")
-  const tryMd = DateTime.fromFormat(s, "M/d")
-  if (tryMd.isValid) return tryMd.set({ year: DateTime.now().year }).toFormat("yyyy-LL-dd")
+  const iso = DateTime.fromISO(s)
+  if (iso.isValid) return iso.toFormat("yyyy-LL-dd")
+  const us1 = DateTime.fromFormat(s, "M/d/yyyy")
+  if (us1.isValid) return us1.toFormat("yyyy-LL-dd")
+  const us2 = DateTime.fromFormat(s, "M/d/yy")
+  if (us2.isValid) return us2.toFormat("yyyy-LL-dd")
+  const md = DateTime.fromFormat(s, "M/d")
+  if (md.isValid) return md.set({ year: DateTime.now().year }).toFormat("yyyy-LL-dd")
   const parsed = chrono.parseDate(s, new Date(), { forwardDate: true })
   if (parsed) return DateTime.fromJSDate(parsed).toFormat("yyyy-LL-dd")
   return null
@@ -297,30 +312,33 @@ async function extractTextFromXlsxLegacy(file: File): Promise<string> {
 }
 
 function tryParseEventsFromSheet(sheet: XLSX.WorkSheet): ParsedEvent[] {
-  const json = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" })
-  if (!json.length) return []
-  const headers = Object.keys(json[0] || {}).map((h) => String(h).trim().toLowerCase())
-  const map = (name: string) => headers.find((h) => h === name) || headers.find((h) => h.includes(name))
-  const hAssignment = map("assignment") || map("event") || map("name") || map("title")
-  const hDate = map("due date") || map("date")
-  const hTime = map("time")
-  const hTag = map("tag") || map("category") || map("type")
+  const rows = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" })
+  if (!rows.length) return []
+  const headerKeys = Object.keys(rows[0] || {})
+  const normMap: Record<string, string> = {}
+  for (const k of headerKeys) normMap[normHeader(k)] = k
+  const hAssignmentN = pickKey(headerKeys, ["assignment", "eventname", "event", "name", "title", "task", "activity"])
+  const hDateN = pickKey(headerKeys, ["duedate", "date"])
+  const hTimeN = pickKey(headerKeys, ["time", "timeoptional"])
+  const hTagN = pickKey(headerKeys, ["tag", "tags", "tagsoptional", "category", "type", "label", "class"])
+  const hAssignment = hAssignmentN ? normMap[hAssignmentN] : null
+  const hDate = hDateN ? normMap[hDateN] : null
+  const hTime = hTimeN ? normMap[hTimeN] : null
+  const hTag = hTagN ? normMap[hTagN] : null
   if (!hAssignment || !hDate) return []
   const out: ParsedEvent[] = []
-  for (const row of json) {
-    const a = String(row[hAssignment] ?? "").trim()
+  for (const row of rows) {
+    const aRaw = row[hAssignment]
+    const dRaw = row[hDate]
+    const tRaw = hTime ? row[hTime] : ""
+    const tagRaw = hTag ? row[hTag] : ""
+    const a = String(aRaw ?? "").trim()
     if (!a) continue
-    const d = normDate(row[hDate])
+    const d = normDate(dRaw)
     if (!d) continue
-    const t = normTime(row[hTime])
-    const tagRaw = row[hTag] != null ? String(row[hTag]) : ""
-    const ev: ParsedEvent = {
-      event_name: a,
-      event_date: d,
-      event_time: t,
-      event_tag: tagRaw ? capTag(tagRaw) : null
-    }
-    out.push(ev)
+    const t = normTime(tRaw)
+    const tag = capTag(tagRaw)
+    out.push({ event_name: a, event_date: d, event_time: t, event_tag: tag })
   }
   return out
 }
