@@ -6,8 +6,6 @@ import * as pdfjsLib from "pdfjs-dist"
 import { GlobalWorkerOptions } from "pdfjs-dist"
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url"
 import * as mammoth from "mammoth"
-import * as chrono from "chrono-node"
-import { DateTime } from "luxon"
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -146,11 +144,7 @@ export class OpenAIFilesService {
   }
 }
 
-export class OpenAITextService {
-  static async parseNaturalLanguage(text: string, yearContext?: number, notes?: string): Promise<ParseResult> {
-    if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-
-    const systemPrompt = `Given a user-uploaded document or image (such as a calendar, class schedule, assignment list, or event summary), extract individual events and produce a structured list with complete event details. These sources may be malformed, messy, or inconsistent, so carefully normalize, repair, and interpret the content to maximize accurate event extraction.
+const SYSTEM_PROMPT = `Given a user-uploaded document or image (such as a calendar, class schedule, assignment list, or event summary), extract individual events and produce a structured list with complete event details. These sources may be malformed, messy, or inconsistent, so carefully normalize, repair, and interpret the content to maximize accurate event extraction.
 
 Your main objectives:
 - Parse and reconstruct as many accurate, individual calendar events as possible, even from malformed or visually challenging data, by using robust inference and context clues.
@@ -165,6 +159,46 @@ Your main objectives:
 # Output Format
 Return ONLY a JSON array of event objects matching these fields.`
 
+const EVENT_ARRAY_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      title: { type: "string" },
+      location: { type: ["string", "null"] },
+      all_day: { type: "boolean" },
+      start_date: { type: "string" },
+      start_time: { type: ["string", "null"] },
+      end_date: { type: ["string", "null"] },
+      end_time: { type: ["string", "null"] },
+      is_recurring: { type: ["boolean", "null"] },
+      recurrence_rule: { type: ["string", "null"] },
+      label: { type: ["string", "null"] },
+      tag: { type: ["string", "null"] },
+      description: { type: ["string", "null"] }
+    },
+    required: [
+      "title",
+      "location",
+      "all_day",
+      "start_date",
+      "start_time",
+      "end_date",
+      "end_time",
+      "is_recurring",
+      "recurrence_rule",
+      "label",
+      "tag",
+      "description"
+    ]
+  }
+}
+
+export class OpenAITextService {
+  static async parseNaturalLanguage(text: string, yearContext?: number, notes?: string): Promise<ParseResult> {
+    if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
+
     const body = {
       model: "gpt-4o-mini",
       temperature: 0,
@@ -172,18 +206,27 @@ Return ONLY a JSON array of event objects matching these fields.`
       input: [
         {
           role: "system",
-          content: systemPrompt
+          content: [{ type: "input_text", text: SYSTEM_PROMPT }]
         },
         {
           role: "user",
-          content: JSON.stringify({
-            input_source: text,
-            year_context: yearContext ?? new Date().getFullYear(),
-            notes: notes ?? ""
-          })
+          content: [
+            { type: "input_text", text: "Extract events from the following natural-language text using the specified schema." },
+            { type: "input_text", text: `input_source:\n${text}` },
+            { type: "input_text", text: `year_context: ${yearContext ?? new Date().getFullYear()}` },
+            { type: "input_text", text: `notes:\n${notes ?? ""}` }
+          ]
         }
       ],
-      text: { format: { type: "json_schema" } },
+      text: {
+        format: {
+          type: "json_schema",
+          name: "calendar_events",
+          schema: EVENT_ARRAY_SCHEMA,
+          strict: true
+        }
+      },
+      max_output_tokens: 2000
     }
 
     const res = await fetch("https://api.openai.com/v1/responses", {
@@ -200,8 +243,8 @@ Return ONLY a JSON array of event objects matching these fields.`
     const data = await res.json()
     const content = data?.output?.[0]?.content?.[0]?.text ?? "[]"
     const tokensUsed = data?.usage?.total_tokens || 0
-    let events: ParsedEvent[] = []
 
+    let events: ParsedEvent[] = []
     try {
       events = JSON.parse(content)
     } catch {
