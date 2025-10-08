@@ -498,10 +498,9 @@ async function extractTextFromDocxWithContext(file: File): Promise<string> {
 function parseDocxTableLinesFast(structured: string): ParsedEvent[] {
   const out: ParsedEvent[] = []
   const lines = structured.split("\n")
+  const rowRe = new RegExp(String.raw`^\s*\(?\s*(\d{1,2})\s*${SLASH_CLASS}\s*(\d{1,2})(?:\s*${SLASH_CLASS}\s*(\d{2,4}))?\s*\)?\s*\|\s*(.+)$`, "i")
   for (const line of lines) {
-    const m = line.match(
-      new RegExp(String.raw`^\s*\(?\s*(\d{1,2})\s*${SLASH_CLASS}\s*(\d{1,2})(?:\s*${SLASH_CLASS}\s*(\d{2,4}))?\s*\)?\s*\|\s*[^|]*\|\s*(.+)$`, "i")
-    )
+    const m = line.match(rowRe)
     if (!m) continue
     const mm = parseInt(m[1], 10)
     const dd = parseInt(m[2], 10)
@@ -510,24 +509,25 @@ function parseDocxTableLinesFast(structured: string): ParsedEvent[] {
     const dt = DateTime.fromObject({ year: yy, month: mm, day: dd })
     if (!dt.isValid) continue
     const date = dt.toFormat("yyyy-LL-dd")
-    const nameRaw = m[4].trim()
-    if (!nameRaw) continue
-    let tag: string | null = null
-    const low = nameRaw.toLowerCase()
-    if (/mid-?module|module|quiz/.test(low)) tag = "Quiz"
-    else if (/exam|test|final/.test(low)) tag = "Exam"
-    else if (/lab/.test(low)) tag = "Lab"
-    else if (/discussion/.test(low)) tag = "Class"
-    else if (/assignment|paper|submission|submit|practice problems|problems|web-based activity|course connections/i.test(low)) tag = "Assignment"
-    out.push({
-      event_name: nameRaw,
-      event_date: date,
-      event_time: /due|submit|submission/i.test(low) ? "23:59" : null,
-      event_tag: tag
-    })
+    const rest = m[4]
+    const cells = rest.split("|").map((c) => cleanCellName(c)).filter(Boolean)
+    for (const cell of cells) {
+      const nameRaw = cell
+      if (!nameRaw) continue
+      const low = nameRaw.toLowerCase()
+      const time = /due|submit|submission/.test(low) ? "23:59" : null
+      const tag = classifyTag(nameRaw)
+      out.push({
+        event_name: nameRaw,
+        event_date: date,
+        event_time: time,
+        event_tag: tag
+      })
+    }
   }
   return out
 }
+
 
 async function extractTextFromXlsxLegacy(file: File): Promise<string> {
   const data = await file.arrayBuffer()
