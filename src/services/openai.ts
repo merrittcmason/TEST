@@ -191,9 +191,8 @@ export class OpenAITextService {
   static async parseNaturalLanguage(input_source: string, year_context?: number, notes?: string): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
     const body = {
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       temperature: 0,
-      reasoning: { effort: "medium" },
       input: [
         { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
         {
