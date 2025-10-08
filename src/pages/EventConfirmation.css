@@ -70,6 +70,48 @@
   width: 100%;
 }
 
+.field-group.full select {
+  appearance: none;
+  background-image: var(--dropdown-icon);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+}
+
+/* fix dropdown readability */
+.field-group.full select,
+.field-group.full option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* dark/light mode fallback */
+:root {
+  --bg-primary: #000;
+  --bg-secondary: #111;
+  --input-bg: #1a1a1a;
+  --text-primary: #fff;
+  --text-secondary: #bbb;
+  --border-color: #333;
+  --accent-color: #00aaff;
+  --error-bg: #330000;
+  --error: #ff5555;
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.light-mode {
+  --bg-primary: #fff;
+  --bg-secondary: #f6f6f6;
+  --input-bg: #fff;
+  --text-primary: #000;
+  --text-secondary: #333;
+  --border-color: #ccc;
+  --accent-color: #007aff;
+  --error-bg: #ffe5e5;
+  --error: #b00020;
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
 .field-group.full textarea {
   resize: vertical;
   min-height: 90px;
@@ -97,10 +139,11 @@
   color: var(--text-secondary);
 }
 
+/* switch styling (dark + light mode visible) */
 .switch {
   position: relative;
   display: inline-block;
-  width: 46px;
+  width: 48px;
   height: 26px;
 }
 
@@ -129,7 +172,7 @@
   width: 18px;
   left: 4px;
   bottom: 4px;
-  background-color: var(--bg-primary);
+  background-color: var(--text-primary);
   transition: 0.3s;
   border-radius: 50%;
 }
@@ -139,7 +182,8 @@
 }
 
 .switch input:checked + .slider:before {
-  transform: translateX(20px);
+  transform: translateX(22px);
+  background-color: #fff;
 }
 
 .custom-recurrence-placeholder {
