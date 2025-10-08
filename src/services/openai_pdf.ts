@@ -1,5 +1,5 @@
 import * as pdfjsLib from "pdfjs-dist"
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist"
+import { GlobalWorkerOptions } from "pdfjs-dist"
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url"
 
 export interface ParsedEvent {
@@ -94,12 +94,13 @@ async function extractTextFromPdf(file: File): Promise<string> {
   }
   return allLines.join("\n")
 }
-const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi.
+
+const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi. The assistant must return JSON only.
 Input is normalized text lines (some are flattened table rows joined with "|").
-Extract ONLY dated events. Output one event per item; do not emit combined names like "A & B" when A and B exist separately.
-Preserve decimals in identifiers, e.g., "2.5".
-Times: range→use start; "noon"→"12:00"; "midnight"→"00:00"; due/submit with no time→"23:59".
-Schema only:
+Extract ONLY dated events. Output one event per atomic item; do not emit combined names like "A & B" or "X, Y, Z" when those items appear separately.
+Preserve decimals in identifiers such as "2.5" or "4.10".
+Times: ranges use the start; "noon" -> "12:00"; "midnight" -> "00:00"; due/submit without an explicit time -> "23:59".
+Return ONLY valid JSON with exactly this schema:
 {"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Class|Lecture|Lab|Meeting|Appointment|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
 
 async function callOpenAI_JSON_TextBatch(batchText: string, batchIndex: number, totalBatches: number): Promise<{ parsed: any; tokensUsed: number }> {
@@ -110,7 +111,7 @@ async function callOpenAI_JSON_TextBatch(batchText: string, batchIndex: number, 
       model: TEXT_MODEL,
       messages: [
         { role: "system", content: TEXT_SYSTEM_PROMPT },
-        { role: "user", content: `Batch ${batchIndex + 1}/${totalBatches}\n---BEGIN---\n${batchText}\n---END---` }
+        { role: "user", content: `Batch ${batchIndex + 1}/${totalBatches}. Return JSON only.\n---BEGIN---\n${batchText}\n---END---` }
       ],
       temperature: 0.0,
       max_tokens: MAX_TOKENS_TEXT,
