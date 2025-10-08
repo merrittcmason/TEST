@@ -53,19 +53,49 @@ function fileToDataURL(file: File): Promise<string> {
   })
 }
 
-const VISION_SYSTEM_PROMPT = `Return JSON only. You are an OCR scheduler. The user will send images that contain information to be put on a calendar. Images may be calendar grids, agenda/list views, tables, flyers, or screenshots that include extra UI.
-Core rules:
-1) Detect the primary schedule region and ignore unrelated chrome such as app toolbars, buttons, status bars, page headers/footers.
-2) Resolve dates. If a monthly grid is visible, read the month and year near the grid; map columns to weekday headers (Sunday..Saturday) and numbered cells to dates. If a list/agenda, use the nearest visible date heading for following items until a new heading appears. If no explicit year, use the current year.
-3) Multiple items in one day must remain on that exact date. Do not move an item to the prior or next day to “balance” duplicates. When a day has N items, emit N separate events with identical event_date.
-4) Multi-day bars/arrows or phrases indicating spans (e.g., “Modules at home” with an arrow across cells, or “Oct 7–11”) must be expanded to one event per covered date, same name each day.
-5) Prefer the cell that contains the numeric day label for anchoring. If an item visually overlaps two cells, choose the cell whose date text is closest; if still ambiguous, choose the later date.
-6) Preserve decimals and section identifiers in names (e.g., “Practice Problems 2.5”).
-7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If wording implies due/submit/turn-in with no time, use “23:59”; otherwise null.
-8) Keep names short, title-case, no dates/times in the name, ≤ 50 chars.
-Schema only:
-{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}
-Return JSON only.`
+const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
+
+Goal: OUTPUT ONLY events that have a resolvable calendar date.
+
+How to read dates:
+- Accept: 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
+- Normalize all dates to YYYY-MM-DD. If the year is missing, use ${new Date().getFullYear()}.
+- For calendar grids or tables, read month/year from headers and carry them forward until a new header appears.
+- For each row/cell, if a day number or date is shown separately from the event text, associate that date with the nearby items in the same row/cell/box.
+- If the date is not visible near the item, look up to the nearest date header/column heading in the same column or section.
+
+Noise to ignore in NAMES (do NOT ignore dates): room/location strings, URLs, instructor names/emails, campus/building names, map links.
+
+Combining vs splitting:
+- If one line lists multiple sections for the SAME assignment (e.g., "Practice problems — sections 5.1 & 5.2"), create ONE event name that preserves "5.1 & 5.2".
+- Split only when a line clearly has different tasks (e.g., "HW 3 due; Quiz 2").
+
+Schema ONLY:
+{
+  "events": [
+    {
+      "event_name": "Title-Case Short Name",
+      "event_date": "YYYY-MM-DD",
+      "event_time": "HH:MM" | null,
+      "event_tag": "interview|exam|midterm|quiz|homework|assignment|project|lab|lecture|class|meeting|office_hours|presentation|deadline|workshop|holiday|break|no_class|school_closed|other" | null
+    }
+  ]
+}
+
+Name rules:
+- Title-Case, ≤ 40 chars, concise, no dates/times/pronouns/descriptions.
+- Preserve meaningful section/chapter identifiers like "5.1 & 5.2" in the name.
+Time rules:
+- "noon"→"12:00", "midnight"→"00:00", ranges use start time.
+- Due/submit/turn-in with no time → "23:59"; otherwise if no time, event_time = null.
+
+CRITICAL: Every event MUST include a valid event_date. If you cannot determine a date with high confidence, SKIP that item.
+
+Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
+
+const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
+{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
+Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`;
 
 async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
   const userParts: any[] = [{ type: "text", text: "Return JSON only. Extract dated events from these images. Keep all items that share the same day on that exact date. Expand multi-day spans to one event per covered date." }]
