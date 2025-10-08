@@ -219,9 +219,65 @@ Rules:
 6) Preserve decimals/identifiers (e.g., “Practice Problems 2.5”).
 7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If due/submit is implied and no time is present, use “23:59”; else null.
 Respond with valid json only.`
-const REPAIR_PROMPT = `You receive possibly malformed json for:
-{"events":[{"event_name":"...","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"..."|null}]}
-Fix only the json syntax and shape. Return valid json only.`
+const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi.
+Input is normalized text lines (some are flattened table rows joined with " | ").
+Ignore noisy tokens like single-letter weekdays (M, T, W, Th, F), section/room codes, locations, instructor names, emails, and URLs.
+Extract ONLY dated events/assignments with concise names.
+Rules:
+- Output schema ONLY: { "events": [ { "event_name": "Title-Case Short Name", "event_date": "YYYY-MM-DD", "event_time": "HH:MM" | null, "event_tag": "interview|exam|midterm|quiz|homework|assignment|class|lecture|lab|meeting|appointment|holiday|break|no_class|school_closed|other" | null } ] }
+- Title-Case, professional, ≤ 40 chars; no dates/times/pronouns/descriptions in names. Do NOT echo source lines; do NOT include section numbers, room/location, URLs, instructor names, or extra notes in event_name.
+- Use current year if missing (${new Date().getFullYear()}).
+- Accept dates like YYYY-MM-DD, MM/DD, M/D, "Oct 5", "October 5".
+- Times: "12 pm", "12:00pm", "12–1 pm", "noon"→"12:00", "midnight"→"00:00", ranges use start.
+- If text implies due/submit/turn-in and no time, use "23:59".
+- If no time in the line, event_time = null.
+- If a line mentions multiple items for a date, create multiple events for that date.
+- Be exhaustive; do not skip minor items.
+Return ONLY valid JSON. No commentary, no markdown, no trailing commas.`;
+
+const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
+
+Goal: OUTPUT ONLY events that have a resolvable calendar date.
+
+How to read dates:
+- Accept: 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
+- Normalize all dates to YYYY-MM-DD. If the year is missing, use ${new Date().getFullYear()}.
+- For calendar grids or tables, read month/year from headers and carry them forward until a new header appears.
+- For each row/cell, if a day number or date is shown separately from the event text, associate that date with the nearby items in the same row/cell/box.
+- If the date is not visible near the item, look up to the nearest date header/column heading in the same column or section.
+
+Noise to ignore in NAMES (do NOT ignore dates): room/location strings, URLs, instructor names/emails, campus/building names, map links.
+
+Combining vs splitting:
+- If one line lists multiple sections for the SAME assignment (e.g., "Practice problems — sections 5.1 & 5.2"), create ONE event name that preserves "5.1 & 5.2".
+- Split only when a line clearly has different tasks (e.g., "HW 3 due; Quiz 2").
+
+Schema ONLY:
+{
+  "events": [
+    {
+      "event_name": "Title-Case Short Name",
+      "event_date": "YYYY-MM-DD",
+      "event_time": "HH:MM" | null,
+      "event_tag": "interview|exam|midterm|quiz|homework|assignment|project|lab|lecture|class|meeting|office_hours|presentation|deadline|workshop|holiday|break|no_class|school_closed|other" | null
+    }
+  ]
+}
+
+Name rules:
+- Title-Case, ≤ 40 chars, concise, no dates/times/pronouns/descriptions.
+- Preserve meaningful section/chapter identifiers like "5.1 & 5.2" in the name.
+Time rules:
+- "noon"→"12:00", "midnight"→"00:00", ranges use start time.
+- Due/submit/turn-in with no time → "23:59"; otherwise if no time, event_time = null.
+
+CRITICAL: Every event MUST include a valid event_date. If you cannot determine a date with high confidence, SKIP that item.
+
+Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
+
+const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
+{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
+Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`;
 async function callOpenAIWithImageAndOCR(images: string[], ocrPayload: any): Promise<{ parsed: any; tokensUsed: number }> {
   const userParts: any[] = [
     { type: "text", text: "Return json only. Use the OCR boxes to resolve exact dates, keep multiple items on the same date, and expand spans to one event per covered date. OCR payload follows as json." },
