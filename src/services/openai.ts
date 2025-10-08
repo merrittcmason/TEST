@@ -233,7 +233,7 @@ export class OpenAITextService {
           ]
         }
       ],
-      response_format: { type: "json_schema", json_schema: { name: "calendar_events_text", schema: TEXT_SCHEMA, strict: true } }
+      text: { format: { type: "json_schema", schema: TEXT_SCHEMA, strict: true } }
     }
     const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
