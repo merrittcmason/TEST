@@ -46,6 +46,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   }
   return out
 }
+
 function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
@@ -54,98 +55,178 @@ function fileToDataURL(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
 }
-async function enhanceImageDataUrl(dataUrl: string): Promise<string> {
-  return new Promise(resolve => {
+
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = "anonymous"
-    img.onload = () => {
-      const c = document.createElement("canvas")
-      const ctx = c.getContext("2d")!
-      const w = img.naturalWidth
-      const h = img.naturalHeight
-      c.width = w
-      c.height = h
-      ctx.drawImage(img, 0, 0, w, h)
-      const imageData = ctx.getImageData(0, 0, w, h)
-      const d = imageData.data
-      const contrast = 1.4
-      const brightness = 12
-      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
-      for (let i = 0; i < d.length; i += 4) {
-        d[i] = Math.max(0, Math.min(255, factor * (d[i] - 128) + 128 + brightness))
-        d[i + 1] = Math.max(0, Math.min(255, factor * (d[i + 1] - 128) + 128 + brightness))
-        d[i + 2] = Math.max(0, Math.min(255, factor * (d[i + 2] - 128) + 128 + brightness))
-      }
-      ctx.putImageData(imageData, 0, 0)
-      resolve(c.toDataURL("image/jpeg", 0.92))
-    }
-    img.src = dataUrl
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = url
   })
 }
-async function tesseractOCR(dataUrl: string): Promise<string> {
+
+function preprocessImageToDataUrl(img: HTMLImageElement): string {
+  const maxDim = 2200
+  const scale = Math.min(maxDim / Math.max(img.naturalWidth, img.naturalHeight), 1)
+  const w = Math.round(img.naturalWidth * scale)
+  const h = Math.round(img.naturalHeight * scale)
+  const c = document.createElement("canvas")
+  const ctx = c.getContext("2d")!
+  c.width = w
+  c.height = h
+  ctx.drawImage(img, 0, 0, w, h)
+  const id = ctx.getImageData(0, 0, w, h)
+  const d = id.data
+  const contrast = 1.45
+  const brightness = 14
+  const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2]
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b
+    let v = factor * (gray - 128) + 128 + brightness
+    v = Math.max(0, Math.min(255, v))
+    d[i] = d[i + 1] = d[i + 2] = v
+  }
+  ctx.putImageData(id, 0, 0)
+  return c.toDataURL("image/png", 0.95)
+}
+
+type BBox = { x: number; y: number; w: number; h: number; conf: number }
+type OCRWord = { text: string; x: number; y: number; w: number; h: number; conf: number }
+type OCRRegion = { box: BBox; text: string; words: OCRWord[] }
+
+function iou(a: BBox, b: BBox): number {
+  const x1 = Math.max(a.x, b.x)
+  const y1 = Math.max(a.y, b.y)
+  const x2 = Math.min(a.x + a.w, b.x + b.w)
+  const y2 = Math.min(a.y + a.h, b.y + b.h)
+  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1)
+  const union = a.w * a.h + b.w * b.h - inter
+  return union > 0 ? inter / union : 0
+}
+
+function mergeOverlapping(boxes: BBox[], thr = 0.2): BBox[] {
+  const sorted = [...boxes].sort((a, b) => b.conf - a.conf)
+  const kept: BBox[] = []
+  for (const b of sorted) {
+    let overlapped = false
+    for (const k of kept) {
+      if (iou(b, k) > thr) {
+        overlapped = true
+        break
+      }
+    }
+    if (!overlapped) kept.push(b)
+  }
+  return kept
+}
+
+function assignWordsToRegions(regions: BBox[], words: OCRWord[]): OCRRegion[] {
+  const out: OCRRegion[] = regions.map(r => ({ box: r, text: "", words: [] }))
+  for (const w of words) {
+    const cx = w.x + w.w / 2
+    const cy = w.y + w.h / 2
+    let best = -1
+    let bestDist = Infinity
+    for (let i = 0; i < regions.length; i++) {
+      const r = regions[i]
+      const inside = cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h
+      if (!inside) continue
+      const rx = r.x + r.w / 2
+      const ry = r.y + r.h / 2
+      const d = Math.hypot(cx - rx, cy - ry)
+      if (d < bestDist) {
+        bestDist = d
+        best = i
+      }
+    }
+    if (best >= 0) out[best].words.push(w)
+  }
+  for (const r of out) {
+    r.words.sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y))
+    r.text = r.words.map(w => w.text).join(" ").replace(/\s{2,}/g, " ").trim()
+  }
+  return out.filter(r => r.text.length > 0)
+}
+
+async function tesseractDetect(dataUrl: string): Promise<BBox[]> {
   try {
-    const { createWorker } = await import("tesseract.js")
+    const { createWorker, PSM } = await import("tesseract.js")
     const worker = await createWorker()
     await worker.loadLanguage("eng")
     await worker.initialize("eng")
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
+    const det = await worker.detect(dataUrl)
+    await worker.terminate()
+    const boxes: BBox[] = []
+    const add = (arr: any[]) => {
+      for (const b of arr || []) {
+        boxes.push({ x: b.bbox.x0, y: b.bbox.y0, w: b.bbox.x1 - b.bbox.x0, h: b.bbox.y1 - b.bbox.y0, conf: typeof b.confidence === "number" ? b.confidence : 70 })
+      }
+    }
+    add(det.data.blocks || [])
+    add(det.data.paragraphs || [])
+    add(det.data.lines || [])
+    const filtered = boxes.filter(b => b.w >= 12 && b.h >= 10)
+    return mergeOverlapping(filtered, 0.35)
+  } catch {
+    return []
+  }
+}
+
+async function tesseractRecognize(dataUrl: string): Promise<OCRWord[]> {
+  try {
+    const { createWorker, PSM } = await import("tesseract.js")
+    const worker = await createWorker()
+    await worker.loadLanguage("eng")
+    await worker.initialize("eng")
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
     const { data } = await worker.recognize(dataUrl)
     await worker.terminate()
-    return (data.text || "").trim()
+    const words: OCRWord[] = []
+    for (const w of data.words || []) {
+      const t = (w.text || "").trim()
+      if (!t) continue
+      const x = w.bbox?.x0 ?? 0
+      const y = w.bbox?.y0 ?? 0
+      const wdt = (w.bbox?.x1 ?? x) - x
+      const hgt = (w.bbox?.y1 ?? y) - y
+      const conf = typeof w.confidence === "number" ? w.confidence : 70
+      if (wdt >= 6 && hgt >= 8 && conf >= 55) words.push({ text: t, x, y, w: wdt, h: hgt, conf })
+    }
+    return words
   } catch {
-    return ""
+    return []
   }
 }
 
-const SYSTEM_PROMPT_VISION = `Return json only. You are an OCR scheduler. Input is one or more images that contain calendar content or schedule-like information, including monthly grids, agenda lists, tables, flyers, and screenshots that may include extra UI.
-Focus rules:
-- Focus on the scheduling region; ignore app chrome, toolbars, status bars, and unrelated UI.
-Date rules:
-- For monthly grids, read month/year near the grid; map weekday headers (Sunday..Saturday) to columns; map numbered cells to dates. For list/agenda views, apply the nearest date heading to following rows until a new heading appears. If no year, use the current year.
-- When multiple items appear on one day, emit separate events with the same event_date. Never move an item to a different day.
-- Expand multi-day bars/arrows or spans like "Oct 7–11" into one event per covered date with the same name.
-- Anchor items to the cell containing the numeric day. If an item overlaps cells, pick the cell whose day number is closest; if still ambiguous, choose the later date.
-Naming/time rules:
-- Preserve decimals/identifiers (e.g., "Practice Problems 2.5").
-- Times: "noon"→"12:00", "midnight"→"00:00"; for ranges, use the start time. If wording implies due/submit/turn-in with no time, use "23:59"; otherwise null.
-- event_name must be concise, title-case, without dates/times, ≤ 50 characters.
-Schema:
-{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
-const SYSTEM_PROMPT_TEXT = `Return json only. You are an OCR scheduler reading plain text that was extracted from a schedule image. The text may include monthly grids, day headings, agenda items, and times.
-Follow the same rules as the vision prompt for dates, multi-item days, and spans. Use explicit dates in the text when available. If no year is shown, use the current year.
-Schema:
-{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
-
-async function callOpenAI_JSON_FromOCRText(ocrText: string): Promise<{ parsed: any; tokensUsed: number }> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify({
-      model: TEXT_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT_TEXT },
-        { role: "user", content: "Return json only. Convert this OCR text into events using the schema." },
-        { role: "user", content: ocrText.slice(0, 12000) || "(no text)" }
-      ],
-      temperature: 0.0,
-      max_tokens: MAX_TOKENS_TEXT,
-      response_format: { type: "json_object" }
-    })
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || "OpenAI text OCR parse failed")
-  }
-  const data = await res.json()
-  const contentStr = data?.choices?.[0]?.message?.content ?? ""
-  const tokensUsed = data?.usage?.total_tokens ?? 0
-  const parsed = JSON.parse(contentStr)
-  return { parsed, tokensUsed }
+function regionsToJSON(regions: OCRRegion): any
+function regionsToJSON(regions: OCRRegion[]): any
+function regionsToJSON(regions: any): any {
+  const arr = Array.isArray(regions) ? regions : [regions]
+  return arr.map(r => ({
+    box: { x: Math.round(r.box.x), y: Math.round(r.box.y), w: Math.round(r.box.w), h: Math.round(r.box.h), conf: Math.round(r.box.conf) },
+    text: r.text
+  }))
 }
 
-async function callOpenAI_JSON_Vision(images: string[], ocrText: string): Promise<{ parsed: any; tokensUsed: number }> {
+const VISION_PROMPT = `Return json only. You receive one or more images plus a structured OCR payload containing text regions and their boxes. Produce only:
+{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}
+Rules:
+1) Focus on calendar or schedule content; ignore app chrome.
+2) For monthly grids, use headers and numbered cells to resolve dates. For agenda/list layouts, apply the nearest visible date header to subsequent rows until a new header appears. If no year, use the current year.
+3) When a day has multiple items, emit separate events with the same event_date. Do not shift items to adjacent days.
+4) Expand multi-day bars/arrows or spans (e.g., “Oct 7–11”, arrows across cells) to one event per covered date with the same name.
+5) Anchor to the cell containing the numeric day. If an item overlaps two dates, prefer the closer day; if ambiguous, prefer the later day.
+6) Preserve decimals/identifiers (e.g., “Practice Problems 2.5”).
+7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If due/submit is implied and no time is present, use “23:59”; else null.
+Return json only.`
+
+async function callOpenAIWithImageAndOCR(images: string[], ocrPayload: any): Promise<{ parsed: any; tokensUsed: number }> {
   const userParts: any[] = [
-    { type: "text", text: "Return json only. Extract dated events. Keep multiple items on the same date. Expand spans to one event per date. Use this OCR text to assist parsing:" },
-    { type: "text", text: ocrText.slice(0, 12000) || "(no extra OCR text)" }
+    { type: "text", text: "Return json only. Use the OCR boxes to resolve exact dates and keep multiple items on the same date. Expand spans to one event per day. OCR payload:" },
+    { type: "text", text: JSON.stringify({ regions: ocrPayload }).slice(0, 12000) }
   ]
   for (const url of images) userParts.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -154,7 +235,7 @@ async function callOpenAI_JSON_Vision(images: string[], ocrText: string): Promis
     body: JSON.stringify({
       model: VISION_MODEL,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT_VISION },
+        { role: "system", content: VISION_PROMPT },
         { role: "user", content: userParts }
       ],
       temperature: 0.0,
@@ -164,7 +245,7 @@ async function callOpenAI_JSON_Vision(images: string[], ocrText: string): Promis
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || "OpenAI vision OCR parse failed")
+    throw new Error(err?.error?.message || "OpenAI vision parse failed")
   }
   const data = await res.json()
   const contentStr = data?.choices?.[0]?.message?.content ?? ""
@@ -173,69 +254,22 @@ async function callOpenAI_JSON_Vision(images: string[], ocrText: string): Promis
   return { parsed, tokensUsed }
 }
 
-function normName(s: string): string {
-  return (s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()
-}
-function dayDiff(a: string, b: string): number {
-  const da = new Date(a + "T00:00:00Z").getTime()
-  const db = new Date(b + "T00:00:00Z").getTime()
-  const diff = Math.round((da - db) / 86400000)
-  return diff
-}
-function mergeEventLists(a: ParsedEvent[], b: ParsedEvent[]): ParsedEvent[] {
-  const out: ParsedEvent[] = []
-  const index: Record<string, ParsedEvent> = {}
-  for (const e of a) {
-    const key = `${normName(e.event_name)}|${e.event_time || ""}`
-    index[key] = e
-  }
-  for (const e of b) {
-    const key = `${normName(e.event_name)}|${e.event_time || ""}`
-    if (index[key]) {
-      const base = index[key]
-      if (base.event_date !== e.event_date) {
-        if (Math.abs(dayDiff(base.event_date, e.event_date)) === 1) {
-          index[key] = { event_name: base.event_name, event_date: e.event_date, event_time: base.event_time || e.event_time, event_tag: base.event_tag || e.event_tag }
-        } else {
-          out.push(e)
-        }
-      }
-    } else {
-      index[key] = e
-    }
-  }
-  for (const k of Object.keys(index)) out.push(index[k])
-  const seen = new Set<string>()
-  const deduped: ParsedEvent[] = []
-  for (const e of out) {
-    const key = `${normName(e.event_name)}|${e.event_date}|${e.event_time || ""}|${e.event_tag || ""}`
-    if (!seen.has(key)) {
-      seen.add(key)
-      deduped.push(e)
-    }
-  }
-  return deduped
-}
-
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
     const originalUrl = await fileToDataURL(file)
-    const enhancedUrl = await enhanceImageDataUrl(originalUrl)
-    const ocr1 = await tesseractOCR(enhancedUrl)
-    const ocr2 = await tesseractOCR(originalUrl)
-    const combinedOCR = `${ocr1}\n\n${ocr2}`.trim()
-    const textPass = await callOpenAI_JSON_FromOCRText(combinedOCR || "(no text)")
-    const visionPass = await callOpenAI_JSON_Vision([enhancedUrl, originalUrl], combinedOCR)
-    let listText: ParsedEvent[] = (textPass.parsed.events || []) as ParsedEvent[]
-    let listVision: ParsedEvent[] = (visionPass.parsed.events || []) as ParsedEvent[]
-    listText = listText.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
-    listVision = listVision.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
-    let merged = mergeEventLists(listText, listVision)
-    merged = postNormalizeEvents(merged)
-    merged = dedupeEvents(merged)
-    merged.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
-    const tokensUsed = (textPass.tokensUsed || 0) + (visionPass.tokensUsed || 0)
-    return { events: merged, tokensUsed }
+    const img = await loadImage(originalUrl)
+    const preUrl = preprocessImageToDataUrl(img)
+    const boxes = await tesseractDetect(preUrl)
+    const words = await tesseractRecognize(preUrl)
+    const regions = assignWordsToRegions(boxes, words)
+    const payload = regionsToJSON(regions)
+    const { parsed, tokensUsed } = await callOpenAIWithImageAndOCR([preUrl, originalUrl], payload)
+    let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
+    events = events.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
+    events = postNormalizeEvents(events)
+    events = dedupeEvents(events)
+    events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+    return { events, tokensUsed }
   }
 }
