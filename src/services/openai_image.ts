@@ -94,7 +94,7 @@ async function tesseractOCR(dataUrl: string): Promise<string> {
   }
 }
 
-const SYSTEM_PROMPT = `Return json only. You are a professional event scheduler and have recieved a malformed image or screenshot of information. Input is one or more images that contain information to put on a calendar. Images may be calendar grids, agenda/list views, tables, flyers, or screenshots that include extra UI.
+const SYSTEM_PROMPT = ` You are a professional event scheduler and have recieved a malformed image or screenshot of information. Input is one or more images that contain information to put on a calendar. Images may be calendar grids, agenda/list views, tables, flyers, or screenshots that include extra UI.
 Rules:
 1) Focus only on the scheduling region; ignore extra noise, toolbars, headers, footers, and overlays.
 2) Resolve dates precisely. For monthly grids, read the month/year near the grid; map weekday headers (Sunday..Saturday) to columns; map numbered cells to dates. For list/agenda views, apply the nearest date heading to following rows until a new heading appears. If no year, use the current year.
