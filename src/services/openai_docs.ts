@@ -7,7 +7,6 @@ export interface ParsedEvent {
   event_time: string | null
   event_tag: string | null
 }
-
 export interface ParseResult {
   events: ParsedEvent[]
   tokensUsed: number
@@ -24,18 +23,20 @@ const BATCH_EVENT_CAP = 500
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4)
 }
-
 function toTitleCase(s: string): string {
-  return (s || "").trim().replace(/\s+/g, " ").split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
+  return (s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ")
 }
-
 function capTag(t: string | null | undefined): string | null {
   if (!t || typeof t !== "string") return null
   const s = t.trim()
   if (!s) return null
   return s[0].toUpperCase() + s.slice(1).toLowerCase()
 }
-
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return (events || []).map((e) => {
     let name = (e.event_name || "").trim()
@@ -46,7 +47,6 @@ function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
     return { event_name: name, event_date: e.event_date, event_time, event_tag }
   })
 }
-
 function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>()
   const out: ParsedEvent[] = []
@@ -59,24 +59,16 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   }
   return out
 }
-
-function denoiseLine(line: string): string {
-  let s = line
-  s = s.replace(/(^|\s)(M|T|Tu|Tue|Tues|W|Th|Thu|Thur|Thurs|F|Fr|Fri|Sat|Sun|Su)(?=\s|$)/gi, " ")
-  s = s.replace(/\b(Sec(t(ion)?)?\.?\s*[A-Za-z0-9\-]+)\b/gi, " ")
-  s = s.replace(/\b(Room|Rm\.?|Bldg|Building|Hall|Campus|Location)\s*[:#]?\s*[A-Za-z0-9\-\.\(\)]+/gi, " ")
-  s = s.replace(/\b(Zoom|Online|In[-\s]?Person)\b/gi, " ")
-  s = s.replace(/\b(CRN|Course\s*ID)\s*[:#]?\s*[A-Za-z0-9\-]+\b/gi, " ")
-  s = s.replace(/[•●▪■]/g, "-").replace(/\s{2,}/g, " ").trim()
-  return s
-}
-
 function toStructuredPlainText(raw: string): string {
-  const cleaned = (raw || "").replace(/\r/g, "\n").replace(/\t/g, " ").replace(/\s+\n/g, "\n").replace(/\n{2,}/g, "\n").trim()
-  const lines = cleaned.split("\n").map((l) => denoiseLine(l)).filter(Boolean)
+  const cleaned = (raw || "")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim()
+  const lines = cleaned.split("\n").map((l) => l.replace(/\s{2,}/g, " ").trim()).filter(Boolean)
   return lines.join("\n")
 }
-
 function chunkLines(lines: string[], maxLines: number, maxChars: number): string[] {
   const batches: string[] = []
   let buf: string[] = []
@@ -94,7 +86,6 @@ function chunkLines(lines: string[], maxLines: number, maxChars: number): string
   if (buf.length) batches.push(buf.join("\n"))
   return batches
 }
-
 async function extractTextFromDocx(file: File): Promise<string> {
   const ab = await file.arrayBuffer()
   let text = ""
@@ -102,24 +93,27 @@ async function extractTextFromDocx(file: File): Promise<string> {
     const r = await (mammoth as any).extractRawText({ arrayBuffer: ab })
     text = r?.value || ""
   } catch {}
-  if (text && text.trim()) return text
-  const { value: html } = await (mammoth as any).convertToHtml({ arrayBuffer: ab })
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(html, "text/html")
-  const parts: string[] = []
-  doc.querySelectorAll("table").forEach((table) => {
-    table.querySelectorAll("tr").forEach((tr) => {
-      const cells = Array.from(tr.querySelectorAll("th,td")).map((c) => c.textContent?.replace(/\s+/g, " ").trim()).filter(Boolean) as string[]
-      const line = cells.join(" | ").trim()
-      if (line) parts.push(line)
+  if (!text?.trim()) {
+    const { value: html } = await (mammoth as any).convertToHtml({ arrayBuffer: ab })
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, "text/html")
+    const parts: string[] = []
+    doc.querySelectorAll("table").forEach((table) => {
+      table.querySelectorAll("tr").forEach((tr) => {
+        const cells = Array.from(tr.querySelectorAll("th,td"))
+          .map((c) => c.textContent?.replace(/\s+/g, " ").trim())
+          .filter(Boolean) as string[]
+        const line = cells.join(" | ").trim()
+        if (line) parts.push(line)
+      })
     })
-  })
-  doc.querySelectorAll("li, p").forEach((el) => {
-    const t = el.textContent?.replace(/\s+/g, " ").trim()
-    if (t) parts.push(t)
-  })
-  const lines = [...new Set(parts)].map((s) => s.trim()).filter(Boolean)
-  return lines.join("\n")
+    doc.querySelectorAll("p,li,span,div").forEach((el) => {
+      const t = el.textContent?.replace(/\s+/g, " ").trim()
+      if (t) parts.push(t)
+    })
+    text = parts.join("\n")
+  }
+  return text
 }
 
 const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi.
@@ -146,7 +140,7 @@ async function callOpenAI_JSON_TextBatch(batchText: string, batchIndex: number, 
       model: TEXT_MODEL,
       messages: [
         { role: "system", content: TEXT_SYSTEM_PROMPT },
-        { role: "user", content: `Return JSON only.\nBatch ${batchIndex + 1}/${totalBatches}.\n---BEGIN---\n${batchText}\n---END---` }
+        { role: "user", content: `Batch ${batchIndex + 1}/${totalBatches}\n---BEGIN---\n${batchText}\n---END---` }
       ],
       temperature: 0.0,
       max_tokens: MAX_TOKENS_TEXT,
@@ -167,14 +161,11 @@ async function callOpenAI_JSON_TextBatch(batchText: string, batchIndex: number, 
 export class OpenAIDocsService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-    const name = (file.name || "").toLowerCase()
-    const type = (file.type || "").toLowerCase()
-    if (!(type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc"))) throw new Error("Unsupported Word file")
     const raw = await extractTextFromDocx(file)
     if (!raw?.trim()) return { events: [], tokensUsed: 0 }
     const structured = toStructuredPlainText(raw)
     const estimatedTokens = estimateTokens(structured)
-    if (estimatedTokens > MAX_CONTENT_TOKENS) throw new Error(`Document contains too much information (~${estimatedTokens} tokens). Please upload a smaller section.`)
+    if (estimatedTokens > MAX_CONTENT_TOKENS) throw new Error(`Document too large (~${estimatedTokens} tokens). Upload a smaller section.`)
     const lines = structured.split("\n")
     const batches = chunkLines(lines, MAX_LINES_PER_TEXT_BATCH, MAX_CHARS_PER_TEXT_BATCH)
     let tokens = 0
