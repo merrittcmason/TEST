@@ -142,13 +142,12 @@ const EVENT_OBJECT_SCHEMA = {
   required: ["events"]
 }
 
-
 async function robustJsonParse(s: string): Promise<any> {
   try {
     return JSON.parse(s)
   } catch {
-    const first = s.indexOf("[")
-    const last = s.lastIndexOf("]")
+    const first = s.indexOf("{")
+    const last = s.lastIndexOf("}")
     if (first >= 0 && last > first) {
       const slice = s.slice(first, last + 1)
       try {
@@ -165,7 +164,6 @@ async function robustJsonParse(s: string): Promise<any> {
 
 async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
   const userParts: any[] = images.map(url => ({ type: "input_image", image_url: url }))
-
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -188,36 +186,29 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
       max_output_tokens: MAX_TOKENS
     })
   })
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err?.error?.message || "OpenAI vision parse failed")
   }
-
   const data = await res.json()
-  const text = data?.output?.[0]?.content?.[0]?.text ?? "[]"
+  const text = data?.output?.[0]?.content?.[0]?.text ?? '{"events":[]}'
   const tokensUsed = data?.usage?.total_tokens ?? 0
-  let parsed: ParsedEvent[] = []
-
+  let parsedObj: { events: ParsedEvent[] } = { events: [] }
   try {
-    parsed = JSON.parse(text)
+    parsedObj = JSON.parse(text)
   } catch {
-    parsed = await robustJsonParse(text)
+    parsedObj = await robustJsonParse(text)
   }
-
-  return { parsed, tokensUsed }
+  return { parsed: parsedObj.events || [], tokensUsed }
 }
 
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-
     const originalUrl = await fileToDataURL(file)
     const img = await loadImage(originalUrl)
     const processedUrl = preprocessImageToDataUrl(img)
-
     const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl])
-
     let events: ParsedEvent[] = Array.isArray(parsed) ? parsed : []
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
@@ -227,7 +218,6 @@ export class OpenAIImageService {
         ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
         a.title.localeCompare(b.title)
     )
-
     return { events, tokensUsed }
   }
 }
