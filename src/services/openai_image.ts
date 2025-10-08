@@ -11,9 +11,9 @@ export interface ParseResult {
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const VISION_MODEL = "gpt-4o"
-const TEXT_MODEL = "gpt-4o"
+const TEXT_MODEL = "gpt-4o-mini"
 const MAX_TOKENS_VISION = 900
-const MAX_TOKENS_TEXT = 700
+const MAX_TOKENS_TEXT = 500
 
 function toTitleCase(s: string): string {
   return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
@@ -46,7 +46,6 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   }
   return out
 }
-
 function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
@@ -55,7 +54,6 @@ function fileToDataURL(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
 }
-
 async function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -65,7 +63,6 @@ async function loadImage(url: string): Promise<HTMLImageElement> {
     img.src = url
   })
 }
-
 function preprocessImageToDataUrl(img: HTMLImageElement): string {
   const maxDim = 2200
   const scale = Math.min(maxDim / Math.max(img.naturalWidth, img.naturalHeight), 1)
@@ -91,11 +88,9 @@ function preprocessImageToDataUrl(img: HTMLImageElement): string {
   ctx.putImageData(id, 0, 0)
   return c.toDataURL("image/png", 0.95)
 }
-
 type BBox = { x: number; y: number; w: number; h: number; conf: number }
 type OCRWord = { text: string; x: number; y: number; w: number; h: number; conf: number }
 type OCRRegion = { box: BBox; text: string; words: OCRWord[] }
-
 function iou(a: BBox, b: BBox): number {
   const x1 = Math.max(a.x, b.x)
   const y1 = Math.max(a.y, b.y)
@@ -105,7 +100,6 @@ function iou(a: BBox, b: BBox): number {
   const union = a.w * a.h + b.w * b.h - inter
   return union > 0 ? inter / union : 0
 }
-
 function mergeOverlapping(boxes: BBox[], thr = 0.2): BBox[] {
   const sorted = [...boxes].sort((a, b) => b.conf - a.conf)
   const kept: BBox[] = []
@@ -121,7 +115,6 @@ function mergeOverlapping(boxes: BBox[], thr = 0.2): BBox[] {
   }
   return kept
 }
-
 function assignWordsToRegions(regions: BBox[], words: OCRWord[]): OCRRegion[] {
   const out: OCRRegion[] = regions.map(r => ({ box: r, text: "", words: [] }))
   for (const w of words) {
@@ -149,7 +142,6 @@ function assignWordsToRegions(regions: BBox[], words: OCRWord[]): OCRRegion[] {
   }
   return out.filter(r => r.text.length > 0)
 }
-
 async function tesseractDetect(dataUrl: string): Promise<BBox[]> {
   try {
     const { createWorker, PSM } = await import("tesseract.js")
@@ -157,7 +149,7 @@ async function tesseractDetect(dataUrl: string): Promise<BBox[]> {
     await worker.loadLanguage("eng")
     await worker.initialize("eng")
     await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
-    const det = await worker.detect(dataUrl)
+    const det: any = await worker.detect(dataUrl)
     await worker.terminate()
     const boxes: BBox[] = []
     const add = (arr: any[]) => {
@@ -174,7 +166,6 @@ async function tesseractDetect(dataUrl: string): Promise<BBox[]> {
     return []
   }
 }
-
 async function tesseractRecognize(dataUrl: string): Promise<OCRWord[]> {
   try {
     const { createWorker, PSM } = await import("tesseract.js")
@@ -182,7 +173,7 @@ async function tesseractRecognize(dataUrl: string): Promise<OCRWord[]> {
     await worker.loadLanguage("eng")
     await worker.initialize("eng")
     await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
-    const { data } = await worker.recognize(dataUrl)
+    const { data }: any = await worker.recognize(dataUrl)
     await worker.terminate()
     const words: OCRWord[] = []
     for (const w of data.words || []) {
@@ -200,33 +191,41 @@ async function tesseractRecognize(dataUrl: string): Promise<OCRWord[]> {
     return []
   }
 }
-
-function regionsToJSON(regions: OCRRegion): any
-function regionsToJSON(regions: OCRRegion[]): any
-function regionsToJSON(regions: any): any {
-  const arr = Array.isArray(regions) ? regions : [regions]
-  return arr.map(r => ({
-    box: { x: Math.round(r.box.x), y: Math.round(r.box.y), w: Math.round(r.box.w), h: Math.round(r.box.h), conf: Math.round(r.box.conf) },
-    text: r.text
-  }))
+function buildCompactOcrPayload(regions: OCRRegion[]): any[] {
+  const limitRegions = 150
+  const limitChars = 120
+  const sliced = regions.slice(0, limitRegions).map(r => {
+    const t = r.text.length > limitChars ? r.text.slice(0, limitChars) : r.text
+    return { b: [Math.round(r.box.x), Math.round(r.box.y), Math.round(r.box.w), Math.round(r.box.h)], t }
+  })
+  let totalChars = 0
+  const out: any[] = []
+  for (const r of sliced) {
+    const len = r.t.length + 24
+    if (totalChars + len > 8000) break
+    out.push(r)
+    totalChars += len
+  }
+  return out
 }
-
-const VISION_PROMPT = `Return json only. You receive one or more images plus a structured OCR payload containing text regions and their boxes. Produce only:
+const VISION_PROMPT = `Return json only. You will receive images plus a compact OCR payload of text regions and boxes. Produce only:
 {"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}
 Rules:
-1) Focus on calendar or schedule content; ignore app chrome.
-2) For monthly grids, use headers and numbered cells to resolve dates. For agenda/list layouts, apply the nearest visible date header to subsequent rows until a new header appears. If no year, use the current year.
+1) Focus on calendar or schedule content; ignore app chrome and unrelated UI.
+2) For monthly grids, use headers and numbered cells to resolve dates. For agenda/list layouts, apply the nearest visible date heading to subsequent rows until a new heading appears. If no year, use the current year.
 3) When a day has multiple items, emit separate events with the same event_date. Do not shift items to adjacent days.
 4) Expand multi-day bars/arrows or spans (e.g., “Oct 7–11”, arrows across cells) to one event per covered date with the same name.
 5) Anchor to the cell containing the numeric day. If an item overlaps two dates, prefer the closer day; if ambiguous, prefer the later day.
 6) Preserve decimals/identifiers (e.g., “Practice Problems 2.5”).
 7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If due/submit is implied and no time is present, use “23:59”; else null.
-Return json only.`
-
+Respond with valid json only.`
+const REPAIR_PROMPT = `You receive possibly malformed json for:
+{"events":[{"event_name":"...","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"..."|null}]}
+Fix only the json syntax and shape. Return valid json only.`
 async function callOpenAIWithImageAndOCR(images: string[], ocrPayload: any): Promise<{ parsed: any; tokensUsed: number }> {
   const userParts: any[] = [
-    { type: "text", text: "Return json only. Use the OCR boxes to resolve exact dates and keep multiple items on the same date. Expand spans to one event per day. OCR payload:" },
-    { type: "text", text: JSON.stringify({ regions: ocrPayload }).slice(0, 12000) }
+    { type: "text", text: "Return json only. Use the OCR boxes to resolve exact dates, keep multiple items on the same date, and expand spans to one event per covered date. OCR payload follows as json." },
+    { type: "text", text: JSON.stringify({ regions: ocrPayload }) }
   ]
   for (const url of images) userParts.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -250,10 +249,47 @@ async function callOpenAIWithImageAndOCR(images: string[], ocrPayload: any): Pro
   const data = await res.json()
   const contentStr = data?.choices?.[0]?.message?.content ?? ""
   const tokensUsed = data?.usage?.total_tokens ?? 0
-  const parsed = JSON.parse(contentStr)
+  const parsed = await robustJsonParse(contentStr)
   return { parsed, tokensUsed }
 }
-
+async function robustJsonParse(s: string): Promise<any> {
+  try {
+    return JSON.parse(s)
+  } catch {
+    const first = s.indexOf("{")
+    const last = s.lastIndexOf("}")
+    if (first >= 0 && last > first) {
+      const slice = s.slice(first, last + 1)
+      try {
+        return JSON.parse(slice)
+      } catch {}
+    }
+    const cleaned = s.replace(/,\s*([}\]])/g, "$1")
+    try {
+      return JSON.parse(cleaned)
+    } catch {}
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        messages: [
+          { role: "system", content: REPAIR_PROMPT },
+          { role: "user", content: s.slice(0, 12000) }
+        ],
+        temperature: 0,
+        max_tokens: MAX_TOKENS_TEXT,
+        response_format: { type: "json_object" }
+      })
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const fixed = data?.choices?.[0]?.message?.content ?? ""
+      return JSON.parse(fixed)
+    }
+    throw new Error("Failed to repair json")
+  }
+}
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
@@ -263,7 +299,7 @@ export class OpenAIImageService {
     const boxes = await tesseractDetect(preUrl)
     const words = await tesseractRecognize(preUrl)
     const regions = assignWordsToRegions(boxes, words)
-    const payload = regionsToJSON(regions)
+    const payload = buildCompactOcrPayload(regions)
     const { parsed, tokensUsed } = await callOpenAIWithImageAndOCR([preUrl, originalUrl], payload)
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
     events = events.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
