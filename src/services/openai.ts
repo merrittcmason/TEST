@@ -1,16 +1,49 @@
+// src/services/openai.ts
 import { OpenAIExcelService, ParsedEvent as ExcelEvent, ParseResult as ExcelResult } from "./openai_excel"
-import { OpenAIPdfService, ParsedEvent as PdfEvent, ParseResult as PdfResult } from "./openai_pdf"
-import { OpenAIImageService, ParsedEvent as ImgEvent, ParseResult as ImgResult } from "./openai_image"
+import { OpenAIPdfService } from "./openai_pdf"
+import { OpenAIImageService } from "./openai_image"
+
+// Preflight scanners (no AI)
+import * as XLSX from "xlsx"
+import * as pdfjsLib from "pdfjs-dist"
+import { GlobalWorkerOptions } from "pdfjs-dist"
+import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url"
+import mammoth from "mammoth"
+
 import * as chrono from "chrono-node"
 import { DateTime } from "luxon"
+
+GlobalWorkerOptions.workerSrc = pdfWorker
 
 export type ParsedEvent = ExcelEvent
 export type ParseResult = ExcelResult
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
+/* =========================
+   Preflight Size Limits (HIGH for testing)
+   Adjust down later to enforce "one-class" uploads.
+   ========================= */
+const PREVIEW_LIMITS = {
+  anyMaxBytes: 50 * 1024 * 1024,       // 50 MB
+  pdfMaxPages: 200,                    // PDF pages
+  wordMaxChars: 2_000_000,             // characters after raw-text extraction
+  textMaxChars: 2_000_000,             // csv/txt
+  excelMaxSheets: 30,
+  excelMaxTotalRows: 50_000,           // sum of all sheets (header-inclusive)
+  excelMaxTotalCells: 2_000_000        // rough guard (rows * cols summed)
+}
+
+/* =========================
+   Shared normalization
+   ========================= */
 function toTitleCase(s: string): string {
-  return (s || "").trim().replace(/\s+/g, " ").split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
+  return (s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ")
 }
 function capTag(t: string | null | undefined): string | null {
   if (!t || typeof t !== "string") return null
@@ -41,6 +74,9 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out
 }
 
+/* =========================
+   NL parsing (chrono-first)
+   ========================= */
 const TEXTBOX_SYSTEM_PROMPT = `You are a calendar event parser. Extract events from natural language and return them as a JSON array.
 Current date: ${DateTime.now().toISODate()}
 Current weekday: ${DateTime.now().toFormat("cccc")}
@@ -89,7 +125,12 @@ export class OpenAITextService {
     if (deterministic.length) {
       let events = postNormalizeEvents(deterministic)
       events = dedupeEvents(events)
-      events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+      events.sort(
+        (a, b) =>
+          a.event_date.localeCompare(b.event_date) ||
+          ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) ||
+          a.event_name.localeCompare(b.event_name)
+      )
       return { events, tokensUsed: 0 }
     }
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -117,34 +158,124 @@ export class OpenAITextService {
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
-    events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+    events.sort(
+      (a, b) =>
+        a.event_date.localeCompare(b.event_date) ||
+        ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) ||
+        a.event_name.localeCompare(b.event_name)
+    )
     return { events, tokensUsed }
   }
 }
 
+/* =========================
+   Preflight scanners (no AI; block oversize before parsing)
+   ========================= */
+async function preflightCheck(file: File): Promise<void> {
+  // Skip images entirely per your requirement.
+  if (file.type.startsWith("image/")) return
+
+  // 1) Byte-size guard
+  if (file.size > PREVIEW_LIMITS.anyMaxBytes) {
+    throw new Error(
+      `File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max allowed is ${(PREVIEW_LIMITS.anyMaxBytes / (1024 * 1024)).toFixed(0)} MB.`
+    )
+  }
+
+  const name = (file.name || "").toLowerCase()
+  const type = (file.type || "").toLowerCase()
+
+  // 2) Excel/CSV: check sheets, rows, cells (rough)
+  if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+    const data = await file.arrayBuffer()
+    const wb = XLSX.read(data, { type: "array" })
+    const sheetCount = wb.SheetNames.length
+    if (sheetCount > PREVIEW_LIMITS.excelMaxSheets) {
+      throw new Error(`This spreadsheet has ${sheetCount} sheets. Max allowed is ${PREVIEW_LIMITS.excelMaxSheets}.`)
+    }
+    let totalRows = 0
+    let totalCells = 0
+    for (const s of wb.SheetNames) {
+      const ws = wb.Sheets[s]
+      // Header:1 returns 2D arrays and is fast-ish
+      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: true })
+      totalRows += rows.length
+      for (const r of rows) totalCells += (Array.isArray(r) ? r.length : 0)
+      if (totalRows > PREVIEW_LIMITS.excelMaxTotalRows || totalCells > PREVIEW_LIMITS.excelMaxTotalCells) break
+    }
+    if (totalRows > PREVIEW_LIMITS.excelMaxTotalRows) {
+      throw new Error(
+        `This spreadsheet has ${totalRows.toLocaleString()} rows total. Max allowed is ${PREVIEW_LIMITS.excelMaxTotalRows.toLocaleString()}.`
+      )
+    }
+    if (totalCells > PREVIEW_LIMITS.excelMaxTotalCells) {
+      throw new Error(
+        `This spreadsheet is very dense (${totalCells.toLocaleString()} cells). Max allowed is ${PREVIEW_LIMITS.excelMaxTotalCells.toLocaleString()}.`
+      )
+    }
+    return
+  }
+
+  // 3) PDF: check page count
+  if (type.includes("pdf") || name.endsWith(".pdf")) {
+    const data = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise
+    if (pdf.numPages > PREVIEW_LIMITS.pdfMaxPages) {
+      throw new Error(`This PDF has ${pdf.numPages} pages. Max allowed is ${PREVIEW_LIMITS.pdfMaxPages}.`)
+    }
+    return
+  }
+
+  // 4) Word: count extracted raw text characters
+  if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) {
+    const { value: raw } = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
+    const chars = (raw || "").length
+    if (chars > PREVIEW_LIMITS.wordMaxChars) {
+      throw new Error(
+        `This Word document is very long (${chars.toLocaleString()} characters). Max allowed is ${PREVIEW_LIMITS.wordMaxChars.toLocaleString()}.`
+      )
+    }
+    return
+  }
+
+  // 5) Plain text / CSV handled here as generic text check (backup)
+  if (type.startsWith("text/") || name.endsWith(".txt")) {
+    const txt = await file.text()
+    const chars = (txt || "").length
+    if (chars > PREVIEW_LIMITS.textMaxChars) {
+      throw new Error(
+        `This text file is very long (${chars.toLocaleString()} characters). Max allowed is ${PREVIEW_LIMITS.textMaxChars.toLocaleString()}.`
+      )
+    }
+  }
+}
+
+/* =========================
+   File router
+   ========================= */
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<{ events: ParsedEvent[]; tokensUsed: number }> {
+    // preflight size/security checks (skip images)
+    await preflightCheck(file)
+
     const name = (file.name || "").toLowerCase()
     const type = (file.type || "").toLowerCase()
+
     if (type.startsWith("image/")) {
-      const r = await OpenAIImageService.parse(file)
-      return r
+      return await OpenAIImageService.parse(file)
     }
     if (type.includes("pdf") || name.endsWith(".pdf")) {
-      const r = await OpenAIPdfService.parse(file)
-      return r
+      return await OpenAIPdfService.parse(file)
     }
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) {
-      const r = await OpenAIExcelService.parse(file)
-      return r
+      return await OpenAIExcelService.parse(file)
     }
     if (name.endsWith(".csv")) {
-      const fake = new File([file], file.name, { type: "application/vnd.ms-excel" })
-      const r = await OpenAIExcelService.parse(fake)
-      return r
+      // Route through Excel path (it already handles CSV via read)
+      return await OpenAIExcelService.parse(file)
     }
     if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) {
-      const mod = await import("./openai_word")
+      const mod = await import("./openai_docs") // your Word handler
       const r = await mod.OpenAIWordService.parse(file)
       return r
     }
