@@ -105,7 +105,7 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
         ]
       }
     ],
-    response_format: { type: "json_schema", json_schema: { name: "calendar_events", schema: SCHEMA, strict: true } }
+    text.format: { type: "json_schema", json_schema: { name: "calendar_events", schema: SCHEMA, strict: true } }
   }
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
