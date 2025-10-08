@@ -63,6 +63,7 @@
 }
 
 .field-group input,
+.field-group select,
 .field-group textarea {
   width: 100%;
   border: 1px solid var(--border-color);
@@ -71,6 +72,14 @@
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 0.9rem;
+}
+
+.field-group select {
+  appearance: none;
+  background-image: var(--dropdown-icon);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
 }
 
 .field-group textarea {
