@@ -231,6 +231,61 @@ function excerptAround(s: string, pos: number, radius = 120) {
   const caret = " ".repeat(Math.max(0, pos - start)) + "^"
   return `${snippet}\n${caret}`
 }
+function canonicalizeName(s: string): string {
+  return (s || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .replace(/[–—]/g, "-")
+    .replace(/\s*-\s*/g, "-")
+    .trim()
+    .toLowerCase()
+}
+
+function preferTag(a: string | null, b: string | null): string | null {
+  if (a && !b) return a
+  if (b && !a) return b
+  return a || b || null
+}
+
+function smartDedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
+  const byKey = new Map<string, ParsedEvent>()
+  for (const e of events) {
+    const nameKey = canonicalizeName(e.event_name)
+    const dateKey = e.event_date
+    const key = `${nameKey}|${dateKey}`
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, e)
+      continue
+    }
+    const take = { ...existing }
+    if (!take.event_time && e.event_time) take.event_time = e.event_time
+    if (take.event_time === null && e.event_time === "23:59") take.event_time = "23:59"
+    take.event_tag = preferTag(take.event_tag, e.event_tag)
+    byKey.set(key, take)
+  }
+  return Array.from(byKey.values())
+}
+
+function classifyTag(nameRaw: string): string | null {
+  const low = nameRaw.toLowerCase()
+  if (/\bmid[- ]?module\b|\bmodule\b|\bquiz\b/.test(low)) return "Quiz"
+  if (/\bexam\b|\btest\b|\bfinal\b/.test(low)) return "Exam"
+  if (/\blab\b/.test(low)) return "Lab"
+  if (/\bdiscussion\b|\blecture\b|\bclass\b/.test(low)) return "Class"
+  if (/\bassignment\b|\bpaper\b|\bsubmission\b|\bsubmit\b|\bpractice\b|\bproblems\b|\bweb[- ]?based activity\b|\bcourse connections\b/.test(low)) return "Assignment"
+  if (/\bmeeting\b/.test(low)) return "Meeting"
+  if (/\bappointment\b/.test(low)) return "Appointment"
+  return null
+}
+
+function cleanCellName(s: string): string {
+  return (s || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .replace(/^[\-\u2022\u25AA\u25CF\u25A0\*\.\s]+/, "")
+    .trim()
+}
 
 const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi.
 Input is normalized text lines (some are flattened table rows joined with " | ").
