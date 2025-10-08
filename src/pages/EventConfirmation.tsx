@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { useMode, MODE_CONFIG } from '../contexts/ModeContext';
-import { useUserSettings } from '../contexts/UserSettingsContext';
 import './EventConfirmation.css';
 
 interface EventConfirmationProps {
@@ -15,6 +14,8 @@ interface EditableEvent {
   tempId: string;
   title: string;
   all_day: boolean;
+  is_recurring: boolean;
+  recurrence_rule: string | null;
   tag: string | null;
   label: string | null;
   start_at: string | null;
@@ -23,7 +24,8 @@ interface EditableEvent {
   description: string | null;
 }
 
-function toUTC(dateTime: string, tz: string) {
+function toUTC(dateTime: string) {
+  if (!dateTime) return null;
   const local = new Date(dateTime);
   const utc = new Date(local.toLocaleString('en-US', { timeZone: 'UTC' }));
   return utc.toISOString();
@@ -32,12 +34,13 @@ function toUTC(dateTime: string, tz: string) {
 export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirmationProps) {
   const { user } = useAuth();
   const { mode } = useMode();
-  const { settings } = useUserSettings();
   const [editableEvents, setEditableEvents] = useState<EditableEvent[]>(
     events.map((e, i) => ({
       tempId: `temp-${i}`,
       title: e.title || '',
-      all_day: false,
+      all_day: e.all_day || false,
+      is_recurring: e.is_recurring || false,
+      recurrence_rule: e.recurrence_rule || null,
       tag: e.tag || null,
       label: e.label || null,
       start_at: e.start_at || '',
@@ -71,10 +74,12 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
       tempId: `temp-${Date.now()}`,
       title: '',
       all_day: false,
+      is_recurring: false,
+      recurrence_rule: null,
       tag: null,
       label: applyLabelToAll ? globalLabel : null,
-      start_at: new Date().toISOString().split('T')[0] + 'T00:00',
-      end_at: new Date().toISOString().split('T')[0] + 'T01:00',
+      start_at: new Date().toISOString().split('T')[0] + 'T09:00',
+      end_at: new Date().toISOString().split('T')[0] + 'T10:00',
       location: null,
       description: null
     };
@@ -101,15 +106,16 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     setLoading(true);
     try {
       validateEvents();
-      const tz = settings?.timezone || 'UTC';
       const rows = editableEvents.map(e => ({
         user_id: user.id,
         title: e.title,
         all_day: e.all_day,
+        is_recurring: e.is_recurring,
+        recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
         tag: e.tag,
         label: e.label,
-        start_at: e.all_day ? null : toUTC(e.start_at!, tz),
-        end_at: e.all_day ? null : toUTC(e.end_at!, tz),
+        start_at: e.all_day ? null : toUTC(e.start_at!),
+        end_at: e.all_day ? null : toUTC(e.end_at!),
         tzid: 'UTC',
         location: e.location,
         description: e.description
@@ -133,15 +139,16 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     setLoading(true);
     try {
       validateEvents();
-      const tz = settings?.timezone || 'UTC';
       const drafts = editableEvents.map(e => ({
         user_id: user.id,
         title: e.title,
         all_day: e.all_day,
+        is_recurring: e.is_recurring,
+        recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
         tag: e.tag,
         label: e.label,
-        start_at: e.all_day ? null : toUTC(e.start_at!, tz),
-        end_at: e.all_day ? null : toUTC(e.end_at!, tz),
+        start_at: e.all_day ? null : toUTC(e.start_at!),
+        end_at: e.all_day ? null : toUTC(e.end_at!),
         tzid: 'UTC',
         location: e.location,
         description: e.description
@@ -209,6 +216,34 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                     All Day
                   </label>
                 </div>
+                <div className="field-group checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={event.is_recurring}
+                      onChange={(e) => {
+                        handleFieldChange(event.tempId, 'is_recurring', e.target.checked);
+                        if (!e.target.checked) handleFieldChange(event.tempId, 'recurrence_rule', null);
+                      }}
+                    />
+                    Recurring Event
+                  </label>
+                </div>
+                {event.is_recurring && (
+                  <div className="field-group">
+                    <label>Repeat</label>
+                    <select
+                      value={event.recurrence_rule || ''}
+                      onChange={(e) => handleFieldChange(event.tempId, 'recurrence_rule', e.target.value)}
+                    >
+                      <option value="">Select frequency</option>
+                      <option value="FREQ=DAILY">Daily</option>
+                      <option value="FREQ=WEEKLY">Weekly</option>
+                      <option value="FREQ=MONTHLY">Monthly</option>
+                      <option value="FREQ=YEARLY">Yearly</option>
+                    </select>
+                  </div>
+                )}
                 {!event.all_day && (
                   <>
                     <div className="field-group">
