@@ -4,6 +4,7 @@ export interface ParsedEvent {
   event_time: string | null
   event_tag: string | null
 }
+
 export interface ParseResult {
   events: ParsedEvent[]
   tokensUsed: number
@@ -14,16 +15,18 @@ const VISION_MODEL = "gpt-4o"
 const MAX_TOKENS_VISION = 800
 
 function toTitleCase(s: string): string {
-  return (s || "").trim().replace(/\s+/g, " ").split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
+  return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
 }
+
 function capTag(t: string | null | undefined): string | null {
   if (!t || typeof t !== "string") return null
   const s = t.trim()
   if (!s) return null
   return s[0].toUpperCase() + s.slice(1).toLowerCase()
 }
+
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
-  return (events || []).map((e) => {
+  return (events || []).map(e => {
     let name = (e.event_name || "").trim()
     name = toTitleCase(name).replace(/\s{2,}/g, " ")
     if (name.length > 60) name = name.slice(0, 57).trimEnd() + "..."
@@ -32,6 +35,7 @@ function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
     return { event_name: name, event_date: e.event_date, event_time, event_tag }
   })
 }
+
 function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>()
   const out: ParsedEvent[] = []
@@ -45,14 +49,15 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out
 }
 
-const VISION_SYSTEM_PROMPT = `Extract events that have a resolvable calendar date from the images.
-Output separate events for multiple items in the same dated row/cell. Do not emit combined names like "A & B" when the individual items exist.
-Normalize to:
-{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}
-Preserve decimals in identifiers. "noon"→"12:00", "midnight"→"00:00", due/submit with no time→"23:59".`
+const VISION_SYSTEM_PROMPT = `You extract calendar events from images. Return only JSON. The answer must be JSON.
+Output separate events for multiple items in the same dated row/cell and do not emit combined names like "A & B" or "A, B, C" when those items exist separately.
+Preserve decimals and identifiers exactly (e.g., "2.5", "1.1, 1.2", "5.1 & 5.2").
+Time normalization: ranges use start; "noon"→"12:00"; "midnight"→"00:00"; due/submit with no time→"23:59".
+Schema:
+{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
 
 async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const content: any[] = [{ type: "text", text: "Extract events with dates. Follow schema." }]
+  const content: any[] = [{ type: "text", text: "Extract events with dates. Follow the schema. Return JSON only." }]
   for (const url of images) content.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -90,10 +95,14 @@ export class OpenAIImageService {
     })
     const { parsed, tokensUsed } = await callOpenAI_JSON_Vision([url])
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
-    events = events.filter((e) => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
+    events = events.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
-    events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+    events.sort((a, b) =>
+      a.event_date.localeCompare(b.event_date) ||
+      ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) ||
+      a.event_name.localeCompare(b.event_name)
+    )
     return { events, tokensUsed }
   }
 }
