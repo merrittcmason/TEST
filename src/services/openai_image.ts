@@ -112,6 +112,42 @@ Your main objectives:
 # Output Format
 Return ONLY a JSON array of event objects matching these fields.`
 
+const EVENT_ARRAY_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      title: { type: "string" },
+      location: { type: ["string", "null"] },
+      all_day: { type: "boolean" },
+      start_date: { type: "string" },
+      start_time: { type: ["string", "null"] },
+      end_date: { type: ["string", "null"] },
+      end_time: { type: ["string", "null"] },
+      is_recurring: { type: ["boolean", "null"] },
+      recurrence_rule: { type: ["string", "null"] },
+      label: { type: ["string", "null"] },
+      tag: { type: ["string", "null"] },
+      description: { type: ["string", "null"] }
+    },
+    required: [
+      "title",
+      "location",
+      "all_day",
+      "start_date",
+      "start_time",
+      "end_date",
+      "end_time",
+      "is_recurring",
+      "recurrence_rule",
+      "label",
+      "tag",
+      "description"
+    ]
+  }
+}
+
 async function robustJsonParse(s: string): Promise<any> {
   try {
     return JSON.parse(s)
@@ -133,10 +169,7 @@ async function robustJsonParse(s: string): Promise<any> {
 }
 
 async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = []
-  for (const url of images) {
-    userParts.push({ type: "input_image", image_url: url })
-  }
+  const userParts: any[] = images.map(url => ({ type: "input_image", image_url: url }))
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -146,11 +179,17 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
       reasoning: { effort: "medium" },
       temperature: 0,
       input: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
         { role: "user", content: userParts }
       ],
-      text: { format: { type: "json_schema" } },
-
+      text: {
+        format: {
+          type: "json_schema",
+          name: "calendar_events",
+          schema: EVENT_ARRAY_SCHEMA,
+          strict: true
+        }
+      },
       max_output_tokens: MAX_TOKENS
     })
   })
@@ -181,6 +220,7 @@ export class OpenAIImageService {
     const originalUrl = await fileToDataURL(file)
     const img = await loadImage(originalUrl)
     const processedUrl = preprocessImageToDataUrl(img)
+
     const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl])
 
     let events: ParsedEvent[] = Array.isArray(parsed) ? parsed : []
