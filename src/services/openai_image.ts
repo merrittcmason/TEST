@@ -181,7 +181,7 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
         format: {
           type: "json_schema",
           name: "calendar_events",
-          schema: EVENT_ARRAY_SCHEMA,
+          schema: EVENT_OBJECT_SCHEMA,
           strict: true
         }
       },
