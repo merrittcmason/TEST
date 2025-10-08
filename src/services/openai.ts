@@ -72,7 +72,6 @@ async function preflightFileSize(file: File) {
   const type = (file.type || "").toLowerCase()
   const size = file.size
   if (size > PREVIEW_LIMITS.anyMaxBytes) throw new Error("File too large")
-
   if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) {
     const data = await file.arrayBuffer()
     const wb = XLSX.read(data, { type: "array" })
@@ -128,7 +127,6 @@ export class OpenAIFilesService {
     await preflightFileSize(file)
     const name = (file.name || "").toLowerCase()
     const type = (file.type || "").toLowerCase()
-
     if (type.startsWith("image/")) return await OpenAIImageService.parse(file)
     if (type.includes("pdf") || name.endsWith(".pdf")) return await OpenAIPdfService.parse(file)
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) return await OpenAIExcelService.parse(file)
@@ -189,27 +187,26 @@ const EVENT_OBJECT_SCHEMA = {
   required: ["events"]
 }
 
-
 export class OpenAITextService {
-  static async parseNaturalLanguage(text: string, yearContext?: number, notes?: string): Promise<ParseResult> {
+  static async parseNaturalLanguage(input_source: string, year_context?: number, notes?: string): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-
     const body = {
       model: "gpt-4o-mini",
       temperature: 0,
       reasoning: { effort: "medium" },
       input: [
-        {
-          role: "system",
-          content: [{ type: "input_text", text: SYSTEM_PROMPT }]
-        },
+        { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
         {
           role: "user",
           content: [
-            { type: "input_text", text: "Extract events from the following natural-language text using the specified schema." },
-            { type: "input_text", text: `input_source:\n${text}` },
-            { type: "input_text", text: `year_context: ${yearContext ?? new Date().getFullYear()}` },
-            { type: "input_text", text: `notes:\n${notes ?? ""}` }
+            {
+              type: "input_text",
+              text: JSON.stringify({
+                input_source,
+                year_context: year_context ?? new Date().getFullYear(),
+                notes: notes ?? ""
+              })
+            }
           ]
         }
       ],
@@ -217,35 +214,31 @@ export class OpenAITextService {
         format: {
           type: "json_schema",
           name: "calendar_events",
-          schema: EVENT_ARRAY_SCHEMA,
+          schema: EVENT_OBJECT_SCHEMA,
           strict: true
         }
       },
       max_output_tokens: 2000
     }
-
     const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify(body)
     })
-
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err?.error?.message || "OpenAI API request failed")
     }
-
     const data = await res.json()
-    const content = data?.output?.[0]?.content?.[0]?.text ?? "[]"
+    const content = data?.output?.[0]?.content?.[0]?.text ?? '{"events":[]}'
     const tokensUsed = data?.usage?.total_tokens || 0
-
-    let events: ParsedEvent[] = []
+    let parsedObj: { events: ParsedEvent[] } = { events: [] }
     try {
-      events = JSON.parse(content)
+      parsedObj = JSON.parse(content)
     } catch {
-      events = []
+      parsedObj = { events: [] }
     }
-
+    let events: ParsedEvent[] = Array.isArray(parsedObj.events) ? parsedObj.events : []
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
     events.sort(
@@ -254,7 +247,6 @@ export class OpenAITextService {
         ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
         a.title.localeCompare(b.title)
     )
-
     return { events, tokensUsed }
   }
 }
