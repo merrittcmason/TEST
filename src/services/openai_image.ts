@@ -52,65 +52,67 @@ function fileToDataURL(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
 }
-
-const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images or information that needs to be scheduled (use your built-in OCR).
-
-Goal: OUTPUT ONLY events that have a resolvable calendar date.
-
-Core rules:
-
-1) Detect the primary information region and ignore unrelated information and UI  such as app toolbars, buttons, status bars, page headers/footers, etc...
-2) Resolve dates. If a monthly grid is visible, accurately map the boxs and the number inside that lists the date. Not every grid is going is going to be the same shape and size; map columns to weekday headers. (Sunday..Saturday) and numbered cells to dates. If a list/agenda, use the nearest visible date heading for following items until a new heading appears. If no explicit year, use the current year. 
-3) Multiple items in one day must remain on that exact date. Do not move an item to the prior or next day to “balance” duplicates. When a day has N items, emit N separate events with identical event_date.
-4) Multi-day bars/arrows or phrases indicating spans (e.g., “Vacation” with an arrow across cells, or “Oct 7–11”) must be expanded to one event per covered date, same name each day. If an arrow is present, an event should be scheduled for every box or column that the arrown touches or crosses.
-5) Prefer the cell that contains the numeric day label for anchoring. If an item visually overlaps two cells, choose the cell whose date text is closest; if still ambiguous, choose the later date.
-6) Preserve decimals and section identifiers in names (e.g., “Practice Problems 2.5”).
-7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If wording implies due/submit/turn-in with no time, use “23:59”; otherwise null.
-8) Keep names short, title-case, no dates/times in the name, ≤ 50 chars.
-Schema only:
-
-How to read dates:
-- Accept: 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
-- Normalize all dates to YYYY-MM-DD. If the year is missing, use ${new Date().getFullYear()}.
-- For calendar grids or tables, read month/year from headers and carry them forward until a new header appears.
-- For each row/cell, if a day number or date is shown separately from the event text, associate that date with the nearby items in the same row/cell/box.
-- If the date is not visible near the item, look up to the nearest date header/column heading in the same column or section.
-
-Noise to ignore in NAMES (do NOT ignore dates): room/location strings, URLs, instructor names/emails, campus/building names, map links.
-
-Combining vs splitting:
-- If one line lists multiple sections for the SAME assignment (e.g., "Practice problems — sections 5.1 & 5.2"), create ONE event name that preserves "5.1 & 5.2".
-- Split only when a line clearly has different tasks (e.g., "HW 3 due; Quiz 2").
-
-Schema ONLY:
-{
-  "events": [
-    {
-      "event_name": "Title-Case Short Name",
-      "event_date": "YYYY-MM-DD",
-      "event_time": "HH:MM" | null,
-      "event_tag": "interview|exam|midterm|quiz|homework|assignment|project|lab|lecture|class|meeting|office_hours|presentation|deadline|workshop|holiday|break|no_class|school_closed|other" | null
+async function enhanceImageDataUrl(dataUrl: string): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => {
+      const c = document.createElement("canvas")
+      const ctx = c.getContext("2d")!
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      c.width = w
+      c.height = h
+      ctx.drawImage(img, 0, 0, w, h)
+      const imageData = ctx.getImageData(0, 0, w, h)
+      const d = imageData.data
+      const contrast = 1.35
+      const brightness = 10
+      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = Math.max(0, Math.min(255, factor * (d[i] - 128) + 128 + brightness))
+        d[i + 1] = Math.max(0, Math.min(255, factor * (d[i + 1] - 128) + 128 + brightness))
+        d[i + 2] = Math.max(0, Math.min(255, factor * (d[i + 2] - 128) + 128 + brightness))
+      }
+      ctx.putImageData(imageData, 0, 0)
+      resolve(c.toDataURL("image/jpeg", 0.92))
     }
-  ]
+    img.src = dataUrl
+  })
+}
+async function tesseractOCR(dataUrl: string): Promise<string> {
+  try {
+    const { createWorker } = await import("tesseract.js")
+    const worker = await createWorker()
+    await worker.loadLanguage("eng")
+    await worker.initialize("eng")
+    const { data } = await worker.recognize(dataUrl)
+    await worker.terminate()
+    return (data.text || "").trim()
+  } catch {
+    return ""
+  }
 }
 
-Name rules:
-- Title-Case, ≤ 40 chars, concise, no dates/times/pronouns/descriptions.
-- Preserve meaningful section/chapter identifiers like "5.1 & 5.2" in the name.
-Time rules:
-- "noon"→"12:00", "midnight"→"00:00", ranges use start time.
-- Due/submit/turn-in with no time → "23:59"; otherwise if no time, event_time = null.
+const SYSTEM_PROMPT = `Return json only. You are an OCR scheduler. Input is one or more images that contain information to put on a calendar. Images may be calendar grids, agenda/list views, tables, flyers, or screenshots that include extra UI.
+Rules:
+1) Focus only on the scheduling region; ignore app chrome, toolbars, headers, footers, and overlays.
+2) Resolve dates precisely. For monthly grids, read the month/year near the grid; map weekday headers (Sunday..Saturday) to columns; map numbered cells to dates. For list/agenda views, apply the nearest date heading to following rows until a new heading appears. If no year, use the current year.
+3) When multiple items appear on one day, emit separate events with the same event_date. Never shift an item to a different day.
+4) Expand multi-day bars/arrows or spans like "Oct 7–11" into one event per covered date with the same name.
+5) Anchor items to the cell containing the numeric day. If an item overlaps cells, pick the cell whose day number is closest; if still ambiguous, choose the later date.
+6) Preserve decimals/identifiers in names (e.g., "Practice Problems 2.5").
+7) Times: "noon" → "12:00", "midnight" → "00:00"; ranges use start time. If text implies due/submit/turn-in and no time, use "23:59"; otherwise null.
+8) event_name must be concise, title-case, without dates/times, ≤ 50 characters.
+Schema:
+{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}
+Return json only.`
 
-CRITICAL: Every event MUST include a valid event_date. If you cannot determine a date with high confidence, leave the date empty.
-
-Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`;
-
-const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
-{ "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
-Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`;
-
-async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = [{ type: "text", text: "Return JSON only. Extract dated events from these images. Keep all items that share the same day on that exact date. Expand multi-day spans to one event per covered date." }]
+async function callOpenAI_JSON_Vision(images: string[], ocrText: string): Promise<{ parsed: any; tokensUsed: number }> {
+  const userParts: any[] = [
+    { type: "text", text: "Return json only. Extract dated events. Keep multiple items on the same date. Expand multi-day spans to one event per date. Use this OCR text to assist parsing:" },
+    { type: "text", text: ocrText.slice(0, 12000) || "(no extra OCR text)" }
+  ]
   for (const url of images) userParts.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -118,7 +120,7 @@ async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; 
     body: JSON.stringify({
       model: VISION_MODEL,
       messages: [
-        { role: "system", content: VISION_SYSTEM_PROMPT },
+        { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userParts }
       ],
       temperature: 0.0,
@@ -140,8 +142,12 @@ async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; 
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-    const url = await fileToDataURL(file)
-    const { parsed, tokensUsed } = await callOpenAI_JSON_Vision([url])
+    const originalUrl = await fileToDataURL(file)
+    const enhancedUrl = await enhanceImageDataUrl(originalUrl)
+    const ocr1 = await tesseractOCR(enhancedUrl)
+    const ocr2 = await tesseractOCR(originalUrl)
+    const combinedOCR = `${ocr1}\n\n${ocr2}`.trim()
+    const { parsed, tokensUsed } = await callOpenAI_JSON_Vision([enhancedUrl, originalUrl], combinedOCR)
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
     events = events.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
     events = postNormalizeEvents(events)
