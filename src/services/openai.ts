@@ -183,7 +183,7 @@ Return ONLY a JSON array of event objects matching these fields.`
           })
         }
       ],
-      response_format: { type: "json" }
+      text: format{ { type: "json" }}
     }
 
     const res = await fetch("https://api.openai.com/v1/responses", {
