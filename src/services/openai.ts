@@ -1,6 +1,6 @@
 import { OpenAIExcelService } from "./openai_excel"
 import { OpenAIPdfService } from "./openai_pdf"
-import { OpenAIImageService } from "./openai_image"
+import { GoogleImageService } from "./google_image.ts"
 import * as XLSX from "xlsx"
 import * as pdfjsLib from "pdfjs-dist"
 import { GlobalWorkerOptions } from "pdfjs-dist"
