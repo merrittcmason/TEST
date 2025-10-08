@@ -1,6 +1,6 @@
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const MODEL = "gpt-4o"
-const MAX_TOKENS = 1000
+const MAX_TOKENS = 1200
 
 export interface ParsedEvent {
   title: string
@@ -97,50 +97,42 @@ function preprocessImageToDataUrl(img: HTMLImageElement): string {
   return c.toDataURL("image/png", 0.95)
 }
 
-const SYSTEM_PROMPT = `Given a user-uploaded document or image (such as a calendar, class schedule, assignment list, or event summary), extract individual events and produce a structured list with complete event details. These sources may be malformed, messy, or inconsistent, so carefully normalize, repair, and interpret the content to maximize accurate event extraction.
+const SYSTEM_PROMPT = `You are an AI calendar event extractor. The input is a screenshot or photo of a schedule, syllabus, or calendar. Your task is to output structured events in valid JSON only.
 
-Your main objectives:
-- Parse and reconstruct as many accurate, individual calendar events as possible, even from malformed or visually challenging data, by using robust inference and context clues.
-- For each event, fill in the following fields: title, location, all_day, start_date, start_time, end_date, end_time, is_recurring, recurrence_rule, label, tag, and description. If the information is missing or ambiguous, set the field to \`null\` or an empty string where appropriate.
-- If the input is a student schedule of assignments that lacks explicit times, assume assignments are due at 23:59 (11:59 PM).
-- Split compound entries (e.g., a single row for "Practice problems-sections 1.6, 1.7 & Lab-Algebra review") into multiple separate events—one for each distinct activity or section.
-- Carefully generate event titles based on input (e.g., “Interview with Google”, “Practice Problems Section 1.6”) and infer logical tags (e.g., “Lab”, “Quiz”, “Exam”) and labels (e.g., course or company names) as specified below.
+### Rules
+1. Return a JSON object with one key: "events", containing an array of event objects.
+2. Each event object must have the fields:
+   title, location, all_day, start_date, start_time, end_date, end_time, is_recurring, recurrence_rule, label, tag, description.
+3. Dates must be formatted YYYY-MM-DD. If the year is missing, assume ${new Date().getFullYear()}.
+4. If a time range appears (e.g., 0800–2000), fill both start_time and end_time.
+5. If a date range appears (e.g., Nov 17–18), fill both start_date and end_date.
+6. If an event has no time but is an all-day event, set all_day=true and both time fields=null.
+7. If an event lacks an end date/time, set end_date=null and end_time=null.
+8. If no recurrence is visible, set is_recurring=false and recurrence_rule=null.
+9. If it looks recurring (daily, weekly, etc.), fill is_recurring=true and use recurrence_rule like "DAILY", "WEEKLY", etc.
+10. If it looks like an assignment, quiz, exam, or class, try to infer a proper tag and label.
+11. If you can’t find something, use null instead of guessing.
+12. Return ONLY valid JSON in the format below.
 
-# Event Field Definitions
-(title, location, all_day, start_date, start_time, end_date, end_time, is_recurring, recurrence_rule, label, tag, description)
-
-# Output Format
-Return ONLY a JSON array of event objects matching these fields.`
-
-const EVENT_OBJECT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          title: { type: "string" },
-          location: { type: ["string", "null"] },
-          all_day: { type: "boolean" },
-          start_date: { type: "string" },
-          start_time: { type: ["string", "null"] },
-          end_date: { type: ["string", "null"] },
-          end_time: { type: ["string", "null"] },
-          is_recurring: { type: ["boolean", "null"] },
-          recurrence_rule: { type: ["string", "null"] },
-          label: { type: ["string", "null"] },
-          tag: { type: ["string", "null"] },
-          description: { type: ["string", "null"] }
-        },
-        required: ["title","location","all_day","start_date","start_time","end_date","end_time","is_recurring","recurrence_rule","label","tag","description"]
-      }
+### Output format
+{
+  "events": [
+    {
+      "title": "Practice Problems 2.5",
+      "location": null,
+      "all_day": false,
+      "start_date": "2025-11-17",
+      "start_time": "08:00",
+      "end_date": "2025-11-17",
+      "end_time": "20:00",
+      "is_recurring": false,
+      "recurrence_rule": null,
+      "label": "Math 101",
+      "tag": "Homework",
+      "description": null
     }
-  },
-  required: ["events"]
-}
+  ]
+}`
 
 async function robustJsonParse(s: string): Promise<any> {
   try {
@@ -158,12 +150,62 @@ async function robustJsonParse(s: string): Promise<any> {
     try {
       return JSON.parse(cleaned)
     } catch {}
-    throw new Error("Failed to parse JSON output")
+    const repair = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        input: [
+          {
+            role: "system",
+            content: "Fix this to be valid JSON matching { events: [...] }. Output only JSON."
+          },
+          { role: "user", content: s.slice(0, 8000) }
+        ],
+        text: { format: { type: "json_object" } }
+      })
+    })
+    if (repair.ok) {
+      const fixed = await repair.json()
+      const out = fixed?.output?.[0]?.content?.[0]?.text ?? "{}"
+      return JSON.parse(out)
+    }
+    throw new Error("Failed to parse or repair JSON")
   }
 }
 
 async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = images.map(url => ({ type: "input_image", image_url: url }))
+  const userParts = images.map(url => ({ type: "input_image", image_url: url }))
+
+  const schema = {
+    type: "object",
+    properties: {
+      events: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            location: { type: ["string", "null"] },
+            all_day: { type: "boolean" },
+            start_date: { type: "string" },
+            start_time: { type: ["string", "null"] },
+            end_date: { type: ["string", "null"] },
+            end_time: { type: ["string", "null"] },
+            is_recurring: { type: ["boolean", "null"] },
+            recurrence_rule: { type: ["string", "null"] },
+            label: { type: ["string", "null"] },
+            tag: { type: ["string", "null"] },
+            description: { type: ["string", "null"] }
+          },
+          required: ["title", "start_date"]
+        }
+      }
+    },
+    required: ["events"]
+  }
+
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -171,52 +213,43 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
       model: MODEL,
       temperature: 0,
       input: [
-        { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
+        { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userParts }
       ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "calendar_events",
-          schema: EVENT_OBJECT_SCHEMA,
-          strict: true
-        }
-      },
+      text: { format: { type: "json_schema", name: "calendar_events", schema } },
       max_output_tokens: MAX_TOKENS
     })
   })
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err?.error?.message || "OpenAI vision parse failed")
   }
+
   const data = await res.json()
-  const text = data?.output?.[0]?.content?.[0]?.text ?? '{"events":[]}'
+  const text = data?.output?.[0]?.content?.[0]?.text ?? "{}"
   const tokensUsed = data?.usage?.total_tokens ?? 0
-  let parsedObj: { events: ParsedEvent[] } = { events: [] }
-  try {
-    parsedObj = JSON.parse(text)
-  } catch {
-    parsedObj = await robustJsonParse(text)
-  }
-  return { parsed: parsedObj.events || [], tokensUsed }
+  const parsed = await robustJsonParse(text)
+  return { parsed, tokensUsed }
 }
 
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
+
     const originalUrl = await fileToDataURL(file)
     const img = await loadImage(originalUrl)
     const processedUrl = preprocessImageToDataUrl(img)
     const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl])
-    let events: ParsedEvent[] = Array.isArray(parsed) ? parsed : []
-    events = postNormalizeEvents(events)
-    events = dedupeEvents(events)
+
+    const events = postNormalizeEvents(dedupeEvents(parsed?.events || []))
     events.sort(
       (a, b) =>
         a.start_date.localeCompare(b.start_date) ||
         ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
         a.title.localeCompare(b.title)
     )
+
     return { events, tokensUsed }
   }
 }
