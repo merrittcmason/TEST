@@ -60,6 +60,10 @@ if (typeof window !== "undefined" && !(window as any).__AI_DEBUG__) {
   ;(window as any).__AI_DEBUG__ = () => lastAIBatches
 }
 
+/* ─────────────────────────────
+   Small utils
+   ───────────────────────────── */
+
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 4)
 }
@@ -83,37 +87,10 @@ function capTag(t: string | null | undefined): string | null {
 function canonicalizeName(s: string): string {
   return (s || "")
     .normalize("NFKC")
-    .replace(/\s+/g, " ")
     .replace(/[–—]/g, "-")
-    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase()
-}
-
-function preferTag(a: string | null, b: string | null): string | null {
-  if (a && !b) return a
-  if (b && !a) return b
-  return a || b || null
-}
-
-function smartDedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
-  const byKey = new Map<string, ParsedEvent>()
-  for (const e of events) {
-    const nameKey = canonicalizeName(e.event_name)
-    const dateKey = e.event_date
-    const key = `${nameKey}|${dateKey}`
-    const existing = byKey.get(key)
-    if (!existing) {
-      byKey.set(key, e)
-      continue
-    }
-    const take = { ...existing }
-    if (!take.event_time && e.event_time) take.event_time = e.event_time
-    if (take.event_time === null && e.event_time === "23:59") take.event_time = "23:59"
-    take.event_tag = preferTag(take.event_tag, e.event_tag)
-    byKey.set(key, take)
-  }
-  return Array.from(byKey.values())
 }
 
 function normHeader(h: string): string {
@@ -130,6 +107,10 @@ function pickKey(headers: string[], aliases: string[]): string | null {
   }
   return null
 }
+
+/* ─────────────────────────────
+   Date / time normalization
+   ───────────────────────────── */
 
 function normDate(input: any): string | null {
   if (input == null || input === "") return null
@@ -220,23 +201,30 @@ function extractTimeFromDateCell(input: any): string | null {
   return null
 }
 
+/* ─────────────────────────────
+   Post-normalization + smarter dedupe
+   ───────────────────────────── */
+
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return (events || []).map((e) => {
     let name = (e.event_name || "").trim()
-    name = toTitleCase(name).replace(/\s{2,}/g, " ")
+    name = toTitleCase(
+      name
+        .normalize("NFKC")
+        .replace(/\s+/g, " ")
+        .replace(/[–—]/g, "-")
+        .replace(/\s*-\s*/g, " - ")
+        .trim()
+    ).replace(/\s{2,}/g, " ")
     if (name.length > 60) name = name.slice(0, 57).trimEnd() + "..."
     const event_time = typeof e.event_time === "string" && e.event_time.trim() === "" ? null : e.event_time
     const event_tag = capTag(e.event_tag ?? null)
-    return {
-      event_name: name,
-      event_date: e.event_date,
-      event_time,
-      event_tag
-    }
+    return { event_name: name, event_date: e.event_date, event_time, event_tag }
   })
 }
 
-function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
+/** Remove exact dupes (same name+date+time+tag) */
+function dedupeEventsStrict(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>()
   const out: ParsedEvent[] = []
   for (const e of events) {
@@ -248,6 +236,114 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   }
   return out
 }
+
+/** Heuristic: drop “roll-up” composite names when atomic siblings exist on the same date. */
+function dropCompositeRollups(events: ParsedEvent[]): ParsedEvent[] {
+  const byDate = new Map<string, ParsedEvent[]>()
+  for (const e of events) {
+    const arr = byDate.get(e.event_date) || []
+    arr.push(e)
+    byDate.set(e.event_date, arr)
+  }
+
+  // patterns like:
+  //  - "Practice Problems 1.1, 1.2, 1.3, 1.5"
+  //  - "Practice Problems- 3.6 & 3.7"
+  //  - "Lab-Chapter 3 & Discussion Board Module 2"
+  const numberListRe = /^\s*(.+?)\s*[-: ]\s*((?:\d+(?:\.\d+)?)(?:\s*(?:,|&|and)\s*\d+(?:\.\d+)?)+)\s*$/i
+  const andJoinRe = /\s*(?:,|&|and)\s*/i
+
+  const keep: ParsedEvent[] = []
+
+  for (const [date, list] of byDate.entries()) {
+    const nameSet = new Set(list.map((e) => canonicalizeName(e.event_name)))
+
+    const isComposite = (name: string): boolean => {
+      const low = name.toLowerCase()
+      return /,|&|\band\b/.test(low)
+    }
+
+    const decomposeNumberRollup = (name: string):
+      | { base: string; parts: string[] }
+      | null => {
+      const m = name.match(numberListRe)
+      if (!m) return null
+      const base = m[1].trim()
+      const partNums = m[2].split(andJoinRe).map((s) => s.trim())
+      return { base, parts: partNums }
+    }
+
+    for (const e of list) {
+      const cname = canonicalizeName(e.event_name)
+
+      // Case A: numeric roll-up like "Practice Problems - 1.1, 1.2"
+      const roll = decomposeNumberRollup(e.event_name)
+      if (roll) {
+        const candidates = roll.parts.map((p) =>
+          canonicalizeName(`${roll.base} ${p}`)
+        )
+        const allExist = candidates.every((c) => nameSet.has(c))
+        if (allExist) continue // drop composite
+      }
+
+      // Case B: multi-task roll-up like "Quiz & Discussion Board"
+      if (isComposite(e.event_name)) {
+        // If we can spot at least TWO atomic siblings whose names appear as substrings
+        // after normalizing separators, drop this composite.
+        const normalized = e.event_name
+          .replace(/\s*[,;]&?\s*/g, " & ")
+          .replace(/\s+and\s+/gi, " & ")
+          .split("&")
+          .map((s) => canonicalizeName(s))
+          .map((s) => s.trim())
+          .filter(Boolean)
+
+        // Build a quick “contains” check using startswith/suffix and exact
+        const atomicHits = normalized.filter((piece) =>
+          Array.from(nameSet).some((nm) => nm === piece || nm.includes(piece) || piece.includes(nm))
+        )
+        if (atomicHits.length >= 2) continue // drop composite
+      }
+
+      keep.push(e)
+    }
+  }
+
+  return dedupeEventsStrict(keep)
+}
+
+/** Prefer 23:59 when one copy is null-time and another is "23:59". */
+function preferDueTime(events: ParsedEvent[]): ParsedEvent[] {
+  const byKey = new Map<string, ParsedEvent>()
+  for (const e of events) {
+    const key = `${canonicalizeName(e.event_name)}|${e.event_date}`
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, e)
+      continue
+    }
+    const best =
+      existing.event_time === "23:59" ? existing :
+      e.event_time === "23:59" ? e :
+      existing.event_time ? existing :
+      e.event_time ? e : existing
+    byKey.set(key, best)
+  }
+  return Array.from(byKey.values())
+}
+
+function finalDedupe(events: ParsedEvent[]): ParsedEvent[] {
+  let out = postNormalizeEvents(events)
+  out = dedupeEventsStrict(out)
+  out = dropCompositeRollups(out) // kill “X & Y” / comma roll-ups when atomics exist
+  out = preferDueTime(out)       // unify null vs 23:59 preference
+  out = dedupeEventsStrict(out)
+  return out
+}
+
+/* ─────────────────────────────
+   Debug helpers
+   ───────────────────────────── */
 
 function positionToLineCol(s: string, pos: number) {
   let line = 1
@@ -268,6 +364,10 @@ function excerptAround(s: string, pos: number, radius = 120) {
   return `${snippet}\n${caret}`
 }
 
+/* ─────────────────────────────
+   System prompts
+   ───────────────────────────── */
+
 const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi.
 Input is normalized text lines (some are flattened table rows joined with "|").
 Ignore noisy tokens like single-letter weekdays (M, T, W, Th, F), section/room codes, locations, instructor names, emails, and URLs.
@@ -281,8 +381,8 @@ Rules:
 - If text implies due/submit/turn-in and no time, use "23:59".
 - If no time in the line, event_time = null.
 - If a row lists multiple items for the same date (separated by columns or "|"), output one event per item. Do not output combined names.
-- Preserve section numbers exactly, including decimals like "2.5". Never drop digits before a decimal.
-- If two outputs would be identical except one has time null and the other is "23:59", prefer "23:59".
+- Preserve section/chapter decimals exactly, e.g., "2.5" must not be shortened to ".5".
+- Never output a combined roll-up like "Item A & Item B" when the individual items are present; only output the individuals.
 Return ONLY valid JSON. No commentary, no markdown, no trailing commas.`
 
 const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
@@ -295,7 +395,7 @@ How to read dates:
 - If the date is not visible near the item, look up to the nearest date header/column heading in the same column or section.
 Noise to ignore in NAMES (do NOT ignore dates): room/location strings, URLs, instructor names/emails, campus/building names, map links.
 Combining vs splitting:
-- When multiple items appear in the same dated row/cell, output separate events; do not combine.
+- When multiple items appear in the same dated row/cell, output separate events; do not combine into "A & B".
 - If one line lists multiple sections for the SAME assignment (e.g., "Practice problems — sections 5.1 & 5.2"), create ONE event name that preserves "5.1 & 5.2".
 Schema ONLY:
 {
@@ -320,6 +420,10 @@ Return ONLY valid JSON (no commentary, no markdown, no trailing commas).`
 const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
 { "events": [ { "event_name": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM"|null, "event_tag": "..."|null } ] }
 Fix ONLY syntax/shape. Do NOT add commentary. Return valid JSON exactly in that shape.`
+
+/* ─────────────────────────────
+   File helpers and extraction
+   ───────────────────────────── */
 
 async function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -477,6 +581,10 @@ async function extractTextFromDocxWithContext(file: File): Promise<string> {
   return applyMonthContext(raw)
 }
 
+/* ─────────────────────────────
+   Fast .docx row parser (preserve decimals; split item lists)
+   ───────────────────────────── */
+
 function classifyTag(nameRaw: string): string | null {
   const low = nameRaw.toLowerCase()
   if (/\bmid[- ]?module\b|\bmodule\b|\bquiz\b/.test(low)) return "Quiz"
@@ -490,10 +598,11 @@ function classifyTag(nameRaw: string): string | null {
 }
 
 function cleanCellName(s: string): string {
+  // Preserve decimals; only drop obvious bullets prefix.
   return (s || "")
     .normalize("NFKC")
+    .replace(/^[\s\u2022\u25AA\u25CF\u25A0\*\-]+/, "")
     .replace(/\s+/g, " ")
-    .replace(/^[\-\u2022\u25AA\u25CF\u25A0\*\.\s]+/, "")
     .trim()
 }
 
@@ -501,6 +610,8 @@ function parseDocxTableLinesFast(structured: string): ParsedEvent[] {
   const out: ParsedEvent[] = []
   const lines = structured.split("\n")
   const rowRe = new RegExp(String.raw`^\s*\(?\s*(\d{1,2})\s*${SLASH_CLASS}\s*(\d{1,2})(?:\s*${SLASH_CLASS}\s*(\d{2,4}))?\s*\)?\s*\|\s*(.+)$`, "i")
+  const splitter = /\s*(?:,|&|\band\b)\s*/i
+
   for (const line of lines) {
     const m = line.match(rowRe)
     if (!m) continue
@@ -511,24 +622,55 @@ function parseDocxTableLinesFast(structured: string): ParsedEvent[] {
     const dt = DateTime.fromObject({ year: yy, month: mm, day: dd })
     if (!dt.isValid) continue
     const date = dt.toFormat("yyyy-LL-dd")
+
+    // Split table into cells and then split multi-items inside a cell
     const rest = m[4]
     const cells = rest.split("|").map((c) => cleanCellName(c)).filter(Boolean)
+
     for (const cell of cells) {
+      // If pattern looks like "Practice problems - 1.1, 1.2, 1.3"
+      const numList = cell.match(/^\s*(.+?)\s*(?:[-:]\s*|\s+sections?\s+)(\d+(?:\.\d+)?(?:\s*(?:,|&|\band\b)\s*\d+(?:\.\d+)?)+)\s*$/i)
+      if (numList) {
+        const base = cleanCellName(numList[1])
+        const parts = numList[2].split(splitter).map((s) => s.trim()).filter(Boolean)
+        for (const p of parts) {
+          const nameRaw = `${base} ${p}`
+          const low = nameRaw.toLowerCase()
+          const time = /due|submit|submission/.test(low) ? "23:59" : null
+          const tag = classifyTag(nameRaw)
+          out.push({ event_name: nameRaw, event_date: date, event_time: time, event_tag: tag })
+        }
+        continue
+      }
+
+      // Otherwise, also split obvious “A & B” combos into two atomics
+      if (/[,&]|\band\b/i.test(cell)) {
+        const parts = cell.split(splitter).map((s) => cleanCellName(s)).filter(Boolean)
+        if (parts.length >= 2) {
+          for (const part of parts) {
+            const low = part.toLowerCase()
+            const time = /due|submit|submission/.test(low) ? "23:59" : null
+            const tag = classifyTag(part)
+            out.push({ event_name: part, event_date: date, event_time: time, event_tag: tag })
+          }
+          continue
+        }
+      }
+
       const nameRaw = cell
       if (!nameRaw) continue
       const low = nameRaw.toLowerCase()
       const time = /due|submit|submission/.test(low) ? "23:59" : null
       const tag = classifyTag(nameRaw)
-      out.push({
-        event_name: nameRaw,
-        event_date: date,
-        event_time: time,
-        event_tag: tag
-      })
+      out.push({ event_name: nameRaw, event_date: date, event_time: time, event_tag: tag })
     }
   }
   return out
 }
+
+/* ─────────────────────────────
+   XLSX (keep your working path)
+   ───────────────────────────── */
 
 async function extractTextFromXlsxLegacy(file: File): Promise<string> {
   const data = await file.arrayBuffer()
@@ -612,6 +754,10 @@ async function extractEventsFromXlsx(file: File): Promise<ParsedEvent[]> {
   return all
 }
 
+/* ─────────────────────────────
+   PDF text (try text first, then images)
+   ───────────────────────────── */
+
 async function extractTextFromPdf(file: File): Promise<string> {
   const data = new Uint8Array(await file.arrayBuffer())
   const pdf = await pdfjsLib.getDocument({ data }).promise
@@ -626,6 +772,10 @@ async function extractTextFromPdf(file: File): Promise<string> {
   }
   return allLines.join("\n")
 }
+
+/* ─────────────────────────────
+   Chunking + OpenAI calls
+   ───────────────────────────── */
 
 function chunkLines(lines: string[], maxLines: number, maxChars: number): string[] {
   const batches: string[] = []
@@ -760,7 +910,7 @@ async function callOpenAI_JSON_VisionBatch(imageDataUrls: string[], batchIndex: 
     {
       type: "text",
       text:
-        "Extract events WITH DATES from these schedule images. Every event MUST have event_date in YYYY-MM-DD. Use headers/column/cell context to resolve dates; if still unknown, omit the item. Normalize US-style dates and carry forward month/year from headings. Preserve section identifiers like 5.1 & 5.2 in the event_name. Output separate events for multiple items in the same row/cell."
+        "Extract events WITH DATES from these schedule images. Every event MUST have event_date in YYYY-MM-DD. Use headers/column/cell context to resolve dates. Output separate events for multiple items in the same row/cell. Never output combined 'A & B' names when the individual items exist."
     }
   ]
   for (const url of imageDataUrls) userContent.push({ type: "image_url", image_url: { url } })
@@ -818,6 +968,10 @@ async function callOpenAI_JSON_VisionBatch(imageDataUrls: string[], batchIndex: 
   }
 }
 
+/* ─────────────────────────────
+   Public services
+   ───────────────────────────── */
+
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
@@ -829,8 +983,7 @@ export class OpenAIFilesService {
       const url = await fileToDataURL(file)
       const { parsed, tokensUsed } = await callOpenAI_JSON_VisionBatch([url], 0, 1)
       let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
-      events = postNormalizeEvents(events)
-      events = smartDedupeEvents(events)
+      events = finalDedupe(events)
       events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed }
     }
@@ -854,8 +1007,7 @@ export class OpenAIFilesService {
           const evsCapped = evs.slice(0, BATCH_EVENT_CAP)
           allEvents.push(...evsCapped)
         }
-        allEvents = postNormalizeEvents(allEvents)
-        allEvents = smartDedupeEvents(allEvents)
+        allEvents = finalDedupe(allEvents)
         if (allEvents.length > 0) {
           allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
           return { events: allEvents, tokensUsed: tokens }
@@ -873,16 +1025,14 @@ export class OpenAIFilesService {
         const evsCapped = evs.slice(0, BATCH_EVENT_CAP)
         allEvents.push(...evsCapped)
       }
-      allEvents = postNormalizeEvents(allEvents)
-      allEvents = smartDedupeEvents(allEvents)
+      allEvents = finalDedupe(allEvents)
       allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events: allEvents, tokensUsed: tokens }
     }
 
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) {
       let events = await extractEventsFromXlsx(file)
-      events = postNormalizeEvents(events)
-      events = dedupeEvents(events)
+      events = finalDedupe(events)
       events = events.filter((e) => !!e.event_date)
       events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed: 0 }
@@ -908,7 +1058,7 @@ export class OpenAIFilesService {
 
     const estimatedTokens = estimateTokens(structured)
     if (estimatedTokens > MAX_CONTENT_TOKENS) {
-      const events = smartDedupeEvents(postNormalizeEvents(fastDocxEvents))
+      const events = finalDedupe(fastDocxEvents)
       events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed: 0 }
     }
@@ -926,12 +1076,15 @@ export class OpenAIFilesService {
     }
     allEvents.push(...fastDocxEvents)
 
-    allEvents = postNormalizeEvents(allEvents)
-    allEvents = smartDedupeEvents(allEvents)
+    allEvents = finalDedupe(allEvents)
     allEvents.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
     return { events: allEvents, tokensUsed: tokens }
   }
 }
+
+/* ─────────────────────────────
+   Natural language parser (with relative dates)
+   ───────────────────────────── */
 
 const TEXTBOX_SYSTEM_PROMPT = `You are a calendar event parser. Extract events from natural language and return them as a JSON array.
 Current date: ${DateTime.now().toISODate()}
@@ -1003,7 +1156,7 @@ export class OpenAITextService {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
     const deterministic = resolveRelativeNL(text)
     if (deterministic.length) {
-      const events = smartDedupeEvents(postNormalizeEvents(deterministic))
+      let events = finalDedupe(deterministic)
       events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed: 0 }
     }
@@ -1034,8 +1187,7 @@ export class OpenAITextService {
     let parsed: any
     parsed = JSON.parse(content)
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
-    events = postNormalizeEvents(events)
-    events = smartDedupeEvents(events)
+    events = finalDedupe(events)
     events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
     return { events, tokensUsed }
   }
