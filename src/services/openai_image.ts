@@ -145,7 +145,7 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
       model: MODEL,
       reasoning: { effort: "medium" },
       temperature: 0,
-      messages: [
+      input: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userParts }
       ],
