@@ -1,4 +1,3 @@
-// src/services/google_image.ts
 export interface ParsedEvent {
   event_name: string
   event_date: string
@@ -10,33 +9,331 @@ export interface ParseResult {
   tokensUsed: number
 }
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_CLOUD_API_KEY
-const MAX_REQ_FEATURES = 1
+type Pt = { x: number; y: number }
+type Box = { x: number; y: number; w: number; h: number }
+type Word = { text: string; box: Box }
+type Line = { text: string; box: Box; words: Word[] }
+
+const VISION_KEY = import.meta.env.VITE_GOOGLE_VISION_API_KEY
+
+const MONTHS = ["january","february","march","april","may","june","july","august","september","october","november","december"]
+const WDAYS = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
+const STOP_TITLES = new Set([
+  "print layout","notes","november","october","december","monday tuesday","wednesday thursday friday saturday",
+  "this document contains ink , shapes and images that are not accessible","calendar","schedule","today","month",
+  "sun","mon","tue","tues","wed","thu","thur","thurs","fri","sat"
+])
 
 function toTitleCase(s: string): string {
-  return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
+  return (s || "").trim().replace(/\s+/g," ").split(" ").map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():"").join(" ")
 }
+
 function capTag(t: string | null | undefined): string | null {
-  if (!t || typeof t !== "string") return null
+  if (!t) return null
   const s = t.trim()
   if (!s) return null
-  return s[0].toUpperCase() + s.slice(1).toLowerCase()
+  return s[0].toUpperCase()+s.slice(1).toLowerCase()
 }
-function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
-  return (events || []).map(e => {
-    let name = (e.event_name || "").trim()
-    name = toTitleCase(name).replace(/\s{2,}/g, " ")
-    if (name.length > 60) name = name.slice(0, 57).trimEnd() + "..."
-    const event_time = typeof e.event_time === "string" && e.event_time.trim() === "" ? null : e.event_time
-    const event_tag = capTag(e.event_tag ?? null)
-    return { event_name: name, event_date: e.event_date, event_time, event_tag }
+
+function fileToDataURL(file: File): Promise<string> {
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader()
+    r.onload=()=>resolve(r.result as string)
+    r.onerror=reject
+    r.readAsDataURL(file)
   })
 }
+
+function parseVertexes(v: any[]): Box {
+  const xs = v.map(p=>p.x||0), ys = v.map(p=>p.y||0)
+  const minx = Math.min(...xs), maxx = Math.max(...xs)
+  const miny = Math.min(...ys), maxy = Math.max(...ys)
+  return { x:minx, y:miny, w:maxx-minx, h:maxy-miny }
+}
+
+function center(b: Box): Pt {
+  return { x: b.x + b.w/2, y: b.y + b.h/2 }
+}
+
+function iou(a: Box, b: Box): number {
+  const x1 = Math.max(a.x,b.x), y1 = Math.max(a.y,b.y)
+  const x2 = Math.min(a.x+a.w,b.x+b.w), y2 = Math.min(a.y+a.h,b.y+b.h)
+  const w = Math.max(0,x2-x1), h = Math.max(0,y2-y1)
+  const inter = w*h
+  const u = a.w*a.h + b.w*b.h - inter
+  return u<=0?0:inter/u
+}
+
+function norm(s: string): string {
+  return s.replace(/\s+/g," ").trim()
+}
+
+function cleanName(s: string): string {
+  let t = norm(s)
+  t = t.replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/gi,"").replace(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}\b/gi,"").replace(/\b\d{1,2}:\d{2}\b/gi,"").replace(/\b\d{3,4}\s*(?:am|pm)\b/gi,"").replace(/\b\d{1,2}\s*(?:am|pm)\b/gi,"")
+  t = t.replace(/[|#]+/g," ").replace(/\s{2,}/g," ").trim()
+  if (!/[a-z]/i.test(t)) return ""
+  if (STOP_TITLES.has(t.toLowerCase())) return ""
+  if (t.length>60) t = t.slice(0,57).trimEnd()+"..."
+  return toTitleCase(t)
+}
+
+function pickTag(s: string): string | null {
+  const x = s.toLowerCase()
+  if (/\bquiz\b/.test(x)) return "Quiz"
+  if (/\bexam|final|test\b/.test(x)) return "Exam"
+  if (/\blab\b/.test(x)) return "Lab"
+  if (/\bmeeting\b/.test(x)) return "Meeting"
+  if (/\bclass|lecture\b/.test(x)) return "Class"
+  if (/\bassignment|homework|hw|project|deadline|submit|due\b/.test(x)) return "Assignment"
+  if (/\bonboarding\b/.test(x)) return "Other"
+  return null
+}
+
+function parseTime(s: string): string | null {
+  const str = s.toLowerCase().replace(/\s+/g," ").trim()
+  if (/noon\b/.test(str)) return "12:00"
+  if (/midnight\b/.test(str)) return "00:00"
+  const m1 = str.match(/\b(\d{1,2}):(\d{2})\s*(am|pm)\b/i)
+  if (m1) {
+    let h = parseInt(m1[1],10), mm = parseInt(m1[2],10)
+    const ap = m1[3].toLowerCase()
+    if (ap==="pm" && h!==12) h+=12
+    if (ap==="am" && h===12) h=0
+    return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
+  }
+  const m2 = str.match(/\b(\d{1,2})\s*(am|pm)\b/i)
+  if (m2) {
+    let h = parseInt(m2[1],10)
+    const ap = m2[2].toLowerCase()
+    if (ap==="pm" && h!==12) h+=12
+    if (ap==="am" && h===12) h=0
+    return `${String(h).padStart(2,"0")}:00`
+  }
+  const m3 = str.match(/\b(\d{3,4})\s*-\s*(\d{3,4})\b/)
+  if (m3) {
+    const n = m3[1]
+    const h = n.length===3?parseInt(n[0],10):parseInt(n.slice(0,2),10)
+    const mm = parseInt(n.slice(-2),10)
+    if (h>=0&&h<24&&mm>=0&&mm<60) return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
+  }
+  const m4 = str.match(/\b(\d{1,2}):(\d{2})\b/)
+  if (m4) return `${String(parseInt(m4[1],10)).padStart(2,"0")}:${String(parseInt(m4[2],10)).padStart(2,"0")}`
+  const m5 = str.match(/\b(\d{1,2})a\b/i)
+  if (m5) return `${String(parseInt(m5[1],10)).padStart(2,"0")}:00`
+  const m6 = str.match(/\b(\d{1,2})p\b/i)
+  if (m6) {
+    let h = parseInt(m6[1],10)
+    if (h!==12) h+=12
+    return `${String(h).padStart(2,"0")}:00`
+  }
+  return null
+}
+
+function detectMonthYear(lines: Line[]): { month: number | null; year: number } {
+  const now = new Date()
+  let month: number | null = null
+  let year = now.getFullYear()
+  for (const ln of lines) {
+    const t = ln.text.toLowerCase()
+    const ym = t.match(/\b(19|20)\d{2}\b/)
+    if (ym) year = parseInt(ym[0],10)
+    for (let i=0;i<MONTHS.length;i++) {
+      const m = MONTHS[i]
+      if (new RegExp(`\\b${m}\\b`,"i").test(t)) { month = i+1; break }
+    }
+  }
+  return { month, year }
+}
+
+function isDayNumberToken(t: string): boolean {
+  if (!/^\d{1,2}$/.test(t)) return false
+  const n = parseInt(t,10)
+  return n>=1 && n<=31
+}
+
+function buildLines(words: Word[]): Line[] {
+  if (!words.length) return []
+  const sorted = [...words].sort((a,b)=>a.box.y-b.box.y||a.box.x-b.box.x)
+  const lines: Line[] = []
+  const yThresh = Math.max(6, Math.round(median(sorted.map(w=>w.box.h))*0.8))
+  let cur: Word[] = []
+  let lastY = sorted[0].box.y
+  for (const w of sorted) {
+    if (Math.abs(w.box.y - lastY) <= yThresh) {
+      cur.push(w)
+    } else {
+      lines.push(makeLine(cur))
+      cur = [w]
+      lastY = w.box.y
+    }
+  }
+  if (cur.length) lines.push(makeLine(cur))
+  return lines.map(l=>{
+    const txt = norm(l.text.replace(/\s{2,}/g," "))
+    return { ...l, text: txt }
+  })
+}
+
+function makeLine(ws: Word[]): Line {
+  const sorted = ws.slice().sort((a,b)=>a.box.x-b.box.x)
+  const text = sorted.map(w=>w.text).join(" ")
+  const x1 = Math.min(...sorted.map(w=>w.box.x)), y1 = Math.min(...sorted.map(w=>w.box.y))
+  const x2 = Math.max(...sorted.map(w=>w.box.x+w.box.w)), y2 = Math.max(...sorted.map(w=>w.box.y+w.box.h))
+  return { text, words: sorted, box: { x:x1, y:y1, w:x2-x1, h:y2-y1 } }
+}
+
+function median(arr: number[]): number {
+  if (!arr.length) return 0
+  const a = [...arr].sort((x,y)=>x-y)
+  const m = Math.floor(a.length/2)
+  return a.length%2?a[m]:(a[m-1]+a[m])/2
+}
+
+function distance(a: Pt, b: Pt): number {
+  const dx = a.x-b.x, dy=a.y-b.y
+  return Math.sqrt(dx*dx+dy*dy)
+}
+
+function parseExplicitDate(s: string, fallbackYear: number): string | null {
+  const m1 = s.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/)
+  if (m1) {
+    let mm = parseInt(m1[1],10), dd = parseInt(m1[2],10)
+    let yy = m1[3]?parseInt(m1[3],10):fallbackYear
+    if (yy<100) yy+=2000
+    if (mm>=1&&mm<=12&&dd>=1&&dd<=31) return `${String(yy).padStart(4,"0")}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`
+  }
+  const m2 = s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(\d{1,2})\b/i)
+  if (m2) {
+    const mm = ["jan","feb","mar","apr","may","jun","jul","aug","sep","sept","oct","nov","dec"].indexOf(m2[1].toLowerCase())
+    const dd = parseInt(m2[2],10)
+    const mReal = mm===8?9:mm>=0?mm+1:null
+    if (mReal && dd>=1&&dd<=31) return `${String(fallbackYear).padStart(4,"0")}-${String(mReal).padStart(2,"0")}-${String(dd).padStart(2,"0")}`
+  }
+  return null
+}
+
+async function visionOCR(dataUrl: string) {
+  const payload = {
+    requests: [{
+      image: { content: dataUrl.split(",")[1] },
+      features: [{ type: "DOCUMENT_TEXT_DETECTION" }]
+    }]
+  }
+  const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(payload)
+  })
+  if (!res.ok) throw new Error("Google Vision request failed")
+  const data = await res.json()
+  return data
+}
+
+function extractWords(visionJson: any): Word[] {
+  const words: Word[] = []
+  const pages = visionJson?.responses?.[0]?.fullTextAnnotation?.pages || []
+  for (const p of pages) {
+    for (const b of p.blocks||[]) {
+      for (const par of b.paragraphs||[]) {
+        for (const w of par.words||[]) {
+          const text = (w.symbols||[]).map((s:any)=>s.text||"").join("")
+          if (!text) continue
+          const box = parseVertexes((w.boundingBox?.vertices)||[])
+          words.push({ text, box })
+        }
+      }
+    }
+  }
+  const anns = visionJson?.responses?.[0]?.textAnnotations
+  if (!words.length && Array.isArray(anns) && anns.length>1) {
+    for (let i=1;i<anns.length;i++) {
+      const a = anns[i]
+      const t = a.description||""
+      if (!t.trim()) continue
+      const box = parseVertexes((a.boundingPoly?.vertices)||[])
+      t.split(/\s+/).forEach(tok=>{
+        if (!tok) return
+        words.push({ text: tok, box })
+      })
+    }
+  }
+  return words
+}
+
+function anchorCalendarEvents(lines: Line[], year: number, hintedMonth: number | null): ParsedEvent[] {
+  const dayTokens: { n:number; box: Box }[] = []
+  for (const ln of lines) {
+    for (const w of ln.words) {
+      if (isDayNumberToken(w.text)) dayTokens.push({ n: parseInt(w.text,10), box: w.box })
+    }
+  }
+  if (!dayTokens.length) return []
+  const ys = dayTokens.map(d=>d.box.y)
+  const rowGap = Math.max(8, Math.round(median(dayTokens.map(d=>d.box.h))*1.5))
+  const rows: { y:number; items: { n:number; box:Box }[] }[] = []
+  dayTokens.sort((a,b)=>a.box.y-b.box.y)
+  for (const dt of dayTokens) {
+    const placed = rows.find(r=>Math.abs(r.y - dt.box.y) <= rowGap)
+    if (placed) placed.items.push(dt)
+    else rows.push({ y: dt.box.y, items:[dt] })
+  }
+  rows.forEach(r=>r.items.sort((a,b)=>a.box.x-b.box.x))
+  const dateCells: { box: Box; date: string }[] = []
+  for (const r of rows) {
+    for (const d of r.items) {
+      let month = hintedMonth
+      if (!month) {
+        const candidates = [hintedMonth||0]
+        month = candidates[0] || new Date().getMonth()+1
+      }
+      const dd = d.n
+      const date = `${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}-${String(dd).padStart(2,"0")}`
+      dateCells.push({ box: d.box, date })
+    }
+  }
+  const events: ParsedEvent[] = []
+  for (const ln of lines) {
+    const explicit = parseExplicitDate(ln.text, year)
+    const rawName = cleanName(ln.text)
+    if (!rawName) continue
+    let event_date: string | null = explicit
+    if (!event_date) {
+      const c = center(ln.box)
+      let best: { date:string; dist:number } | null = null
+      for (const cell of dateCells) {
+        const d = distance(c, center(cell.box))
+        if (!best || d<best.dist) best = { date: cell.date, dist: d }
+      }
+      event_date = best?.date || null
+    }
+    if (!event_date) continue
+    const t = parseTime(ln.text)
+    const tag = pickTag(rawName)
+    events.push({ event_name: rawName, event_date, event_time: t, event_tag: capTag(tag) })
+  }
+  return events
+}
+
+function filterNoise(lines: Line[]): Line[] {
+  return lines.filter(ln=>{
+    const t = ln.text.trim()
+    const tl = t.toLowerCase()
+    if (!t) return false
+    if (STOP_TITLES.has(tl)) return false
+    if (/^(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(\s+(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat))*$/i.test(tl)) return false
+    if (/^\d{1,2}\s*:\s*\d{1,2}\s*\d$/.test(t)) return false
+    if (/^[\d\s/:#\-]+$/.test(tl)) return false
+    if (t.length<2 && !/[a-z]/i.test(t)) return false
+    return true
+  })
+}
+
 function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>()
   const out: ParsedEvent[] = []
   for (const e of events) {
-    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}`
+    const key = `${(e.event_name||"").toLowerCase()}|${e.event_date}|${e.event_time||""}|${e.event_tag||""}`
     if (!seen.has(key)) {
       seen.add(key)
       out.push(e)
@@ -44,322 +341,46 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   }
   return out
 }
-function fileToDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(r.result as string)
-    r.onerror = reject
-    r.readAsDataURL(file)
+
+function postNormalize(events: ParsedEvent[]): ParsedEvent[] {
+  return events.map(e=>{
+    let n = e.event_name
+    n = n.replace(/\s{2,}/g," ").trim()
+    n = toTitleCase(n)
+    if (n.length>60) n = n.slice(0,57).trimEnd()+"..."
+    return { ...e, event_name: n, event_tag: capTag(e.event_tag) }
   })
 }
-async function enhanceImageDataUrl(dataUrl: string): Promise<string> {
-  return new Promise(resolve => {
-    const img = new Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      const c = document.createElement("canvas")
-      const ctx = c.getContext("2d")!
-      const w = img.naturalWidth
-      const h = img.naturalHeight
-      c.width = w
-      c.height = h
-      ctx.drawImage(img, 0, 0, w, h)
-      const imageData = ctx.getImageData(0, 0, w, h)
-      const d = imageData.data
-      const contrast = 1.35
-      const brightness = 10
-      const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
-      for (let i = 0; i < d.length; i += 4) {
-        d[i] = Math.max(0, Math.min(255, factor * (d[i] - 128) + 128 + brightness))
-        d[i + 1] = Math.max(0, Math.min(255, factor * (d[i + 1] - 128) + 128 + brightness))
-        d[i + 2] = Math.max(0, Math.min(255, factor * (d[i + 2] - 128) + 128 + brightness))
-      }
-      ctx.putImageData(imageData, 0, 0)
-      resolve(c.toDataURL("image/jpeg", 0.92))
-    }
-    img.src = dataUrl
-  })
-}
-function b64FromDataUrl(dataUrl: string): string {
-  const idx = dataUrl.indexOf(",")
-  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl
-}
-type GWord = { text: string; bbox: { x: number; y: number; w: number; h: number } }
-type GBlock = { text: string; bbox: { x: number; y: number; w: number; h: number }; words: GWord[]; conf: number }
-function bboxFromVertices(verts: Array<{ x?: number; y?: number }>): { x: number; y: number; w: number; h: number } {
-  const xs = verts.map(v => v.x || 0)
-  const ys = verts.map(v => v.y || 0)
-  const minx = Math.min(...xs)
-  const miny = Math.min(...ys)
-  const maxx = Math.max(...xs)
-  const maxy = Math.max(...ys)
-  return { x: minx, y: miny, w: Math.max(0, maxx - minx), h: Math.max(0, maxy - miny) }
-}
-async function callGoogleVisionOCR(dataUrl: string) {
-  if (!GOOGLE_API_KEY) throw new Error("Google API key not configured")
-  const body = {
-    requests: [
-      {
-        image: { content: b64FromDataUrl(dataUrl) },
-        features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
-        imageContext: {}
-      }
-    ]
-  }
-  const res = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || "Vision API failed")
-  }
-  const json = await res.json()
-  return json
-}
-function extractBlocksFromVision(json: any): { blocks: GBlock[]; fullText: string } {
-  const resp = json?.responses?.[0]
-  const fullText = resp?.fullTextAnnotation?.text || ""
-  const pages = resp?.fullTextAnnotation?.pages || []
-  const blocks: GBlock[] = []
-  for (const page of pages) {
-    const pBlocks = page.blocks || []
-    for (const block of pBlocks) {
-      let blockText = ""
-      const words: GWord[] = []
-      const paragraphs = block.paragraphs || []
-      for (const para of paragraphs) {
-        const pWords = para.words || []
-        for (const w of pWords) {
-          const syms = w.symbols || []
-          const t = syms.map((s: any) => s.text || "").join("")
-          const bb = bboxFromVertices(w.boundingBox?.vertices || [])
-          if (t) {
-            words.push({ text: t, bbox: bb })
-            blockText += (blockText ? " " : "") + t
-          }
-        }
-      }
-      const bbB = bboxFromVertices(block.boundingBox?.vertices || [])
-      const conf = typeof block.confidence === "number" ? block.confidence : 0.9
-      if (blockText) blocks.push({ text: blockText, bbox: bbB, words, conf })
-    }
-  }
-  return { blocks, fullText }
-}
-function normMonthName(s: string): number | null {
-  const m = s.toLowerCase()
-  const arr = ["january","february","march","april","may","june","july","august","september","october","november","december"]
-  const idx = arr.findIndex(v => v === m)
-  if (idx >= 0) return idx + 1
-  const short = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
-  const idx2 = short.findIndex(v => v === m.slice(0,3))
-  return idx2 >= 0 ? idx2 + 1 : null
-}
-function detectMonthYearFromText(fullText: string): { month: number | null; year: number } {
-  const now = new Date()
-  let month: number | null = null
-  let year = now.getFullYear()
-  const m1 = fullText.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/i)
-  if (m1) {
-    const mm = normMonthName(m1[0])
-    if (mm) month = mm
-  }
-  const y1 = fullText.match(/\b(20\d{2}|19\d{2})\b/)
-  if (y1) year = parseInt(y1[0], 10)
-  return { month, year }
-}
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n)
-}
-function makeISO(y: number, m: number, d: number): string | null {
-  const dt = new Date(y, m - 1, d)
-  if (dt.getFullYear() !== y || dt.getMonth() + 1 !== m || dt.getDate() !== d) return null
-  return `${y}-${pad2(m)}-${pad2(d)}`
-}
-function parseExplicitDates(text: string, monthFallback: number | null, year: number): string[] {
-  const out: string[] = []
-  const m1 = text.match(/\b(20\d{2}|19\d{2})-(0?[1-9]|1[0-2])-(0?[1-9]|[12]\d|3[01])\b/g)
-  if (m1) {
-    for (const s of m1) {
-      const [y, m, d] = s.split("-").map(n => parseInt(n, 10))
-      const iso = makeISO(y, m, d)
-      if (iso) out.push(iso)
-    }
-  }
-  const m2 = text.match(/\b(0?[1-9]|1[0-2])[\/\-](0?[1-9]|[12]\d|3[01])([\/\-](\d{2,4}))?\b/g)
-  if (m2) {
-    for (const s of m2) {
-      const parts = s.split(/[\/\-]/)
-      const m = parseInt(parts[0], 10)
-      const d = parseInt(parts[1], 10)
-      let y = year
-      if (parts[2]) {
-        const yy = parseInt(parts[2], 10)
-        y = yy < 100 ? 2000 + yy : yy
-      }
-      const iso = makeISO(y, m, d)
-      if (iso) out.push(iso)
-    }
-  }
-  const m3 = text.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+([0-3]?\d)(?:,\s*(\d{4}))?\b/gi)
-  if (m3) {
-    for (const s of m3) {
-      const mm = normMonthName(s.split(/\s+/)[0])
-      const d = parseInt((s.match(/\b([0-3]?\d)\b/) || [])[1] || "0", 10)
-      const yMatch = s.match(/\b(20\d{2}|19\d{2})\b/)
-      const y = yMatch ? parseInt(yMatch[0], 10) : year
-      if (mm && d) {
-        const iso = makeISO(y, mm, d)
-        if (iso) out.push(iso)
-      }
-    }
-  }
-  const span1 = text.match(/\b([0-3]?\d)\s*[–\-]\s*([0-3]?\d)\b/)
-  if (span1 && monthFallback) {
-    const d1 = parseInt(span1[1], 10)
-    const d2 = parseInt(span1[2], 10)
-    if (d1 >= 1 && d2 >= d1 && d2 <= 31) {
-      for (let d = d1; d <= d2; d++) {
-        const iso = makeISO(year, monthFallback, d)
-        if (iso) out.push(iso)
-      }
-    }
-  }
-  const span2 = text.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+([0-3]?\d)\s*[–\-]\s*([0-3]?\d)\b/i)
-  if (span2) {
-    const mm = normMonthName(span2[1])
-    const d1 = parseInt(span2[2], 10)
-    const d2 = parseInt(span2[3], 10)
-    if (mm && d1 >= 1 && d2 >= d1 && d2 <= 31) {
-      for (let d = d1; d <= d2; d++) {
-        const iso = makeISO(year, mm, d)
-        if (iso) out.push(iso)
-      }
-    }
-  }
-  const uniq = Array.from(new Set(out))
-  return uniq
-}
-function parseTime(text: string): string | null {
-  const t1 = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/)
-  if (t1) return `${t1[1].padStart(2,"0")}:${t1[2]}`
-  const t2 = text.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm)\b/i)
-  if (t2) {
-    let h = parseInt(t2[1], 10)
-    const m = t2[2] ? parseInt(t2[2], 10) : 0
-    const ap = t2[3].toLowerCase()
-    if (ap === "pm" && h !== 12) h += 12
-    if (ap === "am" && h === 12) h = 0
-    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`
-  }
-  const lc = text.toLowerCase()
-  if (/\bnoon\b/.test(lc)) return "12:00"
-  if (/\bmidnight\b/.test(lc)) return "00:00"
-  return null
-}
-function inferTag(text: string): string | null {
-  const lc = text.toLowerCase()
-  if (/\b(interview)\b/.test(lc)) return "Interview"
-  if (/\b(final|exam|midterm|test)\b/.test(lc)) return "Exam"
-  if (/\bquiz\b/.test(lc)) return "Quiz"
-  if (/\b(homework|assignment|practice\s*problems|problems|submission|submit|paper|project)\b/.test(lc)) return "Assignment"
-  if (/\bclass|lecture\b/.test(lc)) return "Class"
-  if (/\blab\b/.test(lc)) return "Lab"
-  if (/\bmeeting\b/.test(lc)) return "Meeting"
-  if (/\bappointment|doctor|dentist\b/.test(lc)) return "Appointment"
-  if (/\bholiday|break\b/.test(lc)) return "Holiday"
-  if (/\bno\s*class\b/.test(lc)) return "No_Class"
-  if (/\bschool\s*closed|college\s*closed\b/.test(lc)) return "School_Closed"
-  return null
-}
-function cleanEventName(text: string): string {
-  let s = text.replace(/\b(20\d{2}|19\d{2})-(0?[1-9]|1[0-2])-(0?[1-9]|[12]\d|3[01])\b/g, "")
-  s = s.replace(/\b(0?[1-9]|1[0-2])[\/\-](0?[1-9]|[12]\d|3[01])([\/\-](\d{2,4}))?\b/g, "")
-  s = s.replace(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+[0-3]?\d(,\s*(20\d{2}|19\d{2}))?\b/gi, "")
-  s = s.replace(/\b([0-3]?\d)\s*[–\-]\s*([0-3]?\d)\b/g, "")
-  s = s.replace(/\s{2,}/g, " ").trim()
-  s = s.replace(/^\W+|\W+$/g, "").trim()
-  return s
-}
-function center(pt: { x: number; y: number; w: number; h: number }) {
-  return { cx: pt.x + pt.w / 2, cy: pt.y + pt.h / 2 }
-}
-function dist(a: { cx: number; cy: number }, b: { cx: number; cy: number }) {
-  const dx = a.cx - b.cx
-  const dy = a.cy - b.cy
-  return Math.sqrt(dx*dx + dy*dy)
-}
-function isLikelyDayWord(w: GWord) {
-  return /^[1-9]|[12]\d|3[01]$/.test(w.text) || /^([0-3]?\d)$/.test(w.text)
-}
-function associateDatesByProximity(blocks: GBlock[], monthFallback: number | null, year: number): Map<number, string[]> {
-  const days: { idx: number; d: number; c: { cx: number; cy: number } }[] = []
-  blocks.forEach((b, idx) => {
-    for (const w of b.words) {
-      if (/^\d{1,2}$/.test(w.text)) {
-        const dnum = parseInt(w.text, 10)
-        if (dnum >= 1 && dnum <= 31) days.push({ idx, d: dnum, c: center(w.bbox) })
-      }
-    }
-  })
-  const perBlockDates = new Map<number, string[]>()
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i]
-    const explicit = parseExplicitDates(b.text, monthFallback, year)
-    if (explicit.length) {
-      perBlockDates.set(i, explicit)
-      continue
-    }
-    if (!monthFallback) continue
-    const bc = center(b.bbox)
-    let best = null as { d: number; c: { cx: number; cy: number } } | null
-    let bestDist = Infinity
-    for (const dw of days) {
-      const dd = dist(bc, dw.c)
-      if (dd < bestDist) {
-        bestDist = dd
-        best = dw
-      }
-    }
-    if (best && bestDist < Math.max(b.bbox.w, b.bbox.h) * 1.5) {
-      const iso = makeISO(year, monthFallback, best.d)
-      if (iso) perBlockDates.set(i, [iso])
-    }
-  }
-  return perBlockDates
-}
+
 export class GoogleImageService {
   static async parse(file: File): Promise<ParseResult> {
-    if (!GOOGLE_API_KEY) throw new Error("Google API key not configured")
-    const originalUrl = await fileToDataURL(file)
-    const enhancedUrl = await enhanceImageDataUrl(originalUrl)
-    const [json1, json2] = await Promise.all([callGoogleVisionOCR(enhancedUrl), callGoogleVisionOCR(originalUrl)])
-    const a1 = extractBlocksFromVision(json1)
-    const a2 = extractBlocksFromVision(json2)
-    const blocks = [...a1.blocks, ...a2.blocks]
-    const fullText = `${a1.fullText}\n${a2.fullText}`
-    const my = detectMonthYearFromText(fullText)
-    const mapDates = associateDatesByProximity(blocks, my.month, my.year)
-    const events: ParsedEvent[] = []
-    for (let i = 0; i < blocks.length; i++) {
-      const b = blocks[i]
-      if (!b.text || b.text.trim().length < 2) continue
-      const dates = mapDates.get(i) || []
-      if (!dates.length) continue
-      const name = cleanEventName(b.text)
-      if (!name || /^\d+$/.test(name)) continue
-      const time = parseTime(b.text)
-      const tag = inferTag(b.text)
-      for (const d of dates) {
-        events.push({ event_name: name, event_date: d, event_time: time, event_tag: tag })
+    if (!VISION_KEY) throw new Error("Google Vision API key not configured")
+    const dataUrl = await fileToDataURL(file)
+    const visionJson = await visionOCR(dataUrl)
+    const words = extractWords(visionJson)
+    if (!words.length) return { events: [], tokensUsed: 0 }
+    const lines = buildLines(words)
+    const useful = filterNoise(lines)
+    const { month, year } = detectMonthYear(lines)
+    const anchored = anchorCalendarEvents(useful, year, month)
+    const explicitOnly: ParsedEvent[] = []
+    for (const ln of useful) {
+      const d = parseExplicitDate(ln.text, year)
+      if (d) {
+        const nm = cleanName(ln.text)
+        if (!nm) continue
+        explicitOnly.push({
+          event_name: nm,
+          event_date: d,
+          event_time: parseTime(ln.text),
+          event_tag: pickTag(nm)
+        })
       }
     }
-    let out = postNormalizeEvents(events)
-    out = out.filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
-    out = dedupeEvents(out)
-    out.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
-    return { events: out, tokensUsed: 0 }
+    let events = anchored.concat(explicitOnly)
+    events = events.filter(e=>e.event_date && e.event_name && !STOP_TITLES.has((e.event_name||"").toLowerCase()))
+    events = postNormalize(dedupeEvents(events))
+    events.sort((a,b)=>a.event_date.localeCompare(b.event_date) || ((a.event_time||"23:59").localeCompare(b.event_time||"23:59")) || a.event_name.localeCompare(b.event_name))
+    return { events, tokensUsed: 0 }
   }
 }
