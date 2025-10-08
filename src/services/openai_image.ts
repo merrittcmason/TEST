@@ -96,10 +96,10 @@ async function tesseractOCR(dataUrl: string): Promise<string> {
 
 const SYSTEM_PROMPT = `Return json only. You are a professional event scheduler and have recieved a malformed image or screenshot of information. Input is one or more images that contain information to put on a calendar. Images may be calendar grids, agenda/list views, tables, flyers, or screenshots that include extra UI.
 Rules:
-1) Focus only on the scheduling region; ignore app chrome, toolbars, headers, footers, and overlays.
+1) Focus only on the scheduling region; ignore extra noise, toolbars, headers, footers, and overlays.
 2) Resolve dates precisely. For monthly grids, read the month/year near the grid; map weekday headers (Sunday..Saturday) to columns; map numbered cells to dates. For list/agenda views, apply the nearest date heading to following rows until a new heading appears. If no year, use the current year.
 3) When multiple items appear on one day, emit separate events with the same event_date. Never shift an item to a different day.
-4) Expand multi-day bars/arrows or spans like "Oct 7–11" into one event per covered date with the same name.
+4) Multi-day bars/arrows or phrases indicating spans (e.g., “Vacation” with an arrow across cells, or “Oct 7–11”) must be expanded to one event per covered date, same name each day. If an arrow is present, an event should be scheduled for every box or column that the arrown touches or crosses.
 5) Anchor items to the cell containing the numeric day. If an item overlaps cells, pick the cell whose day number is closest; if still ambiguous, choose the later date.
 6) Preserve decimals/identifiers in names (e.g., "Practice Problems 2.5").
 7) Times: "noon" → "12:00", "midnight" → "00:00"; ranges use start time. If text implies due/submit/turn-in and no time, use "23:59"; otherwise null.
