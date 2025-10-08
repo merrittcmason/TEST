@@ -62,6 +62,80 @@ async function fileToDataURL(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
 }
+function drawToCanvas(img: HTMLImageElement, sx: number, sy: number, sw: number, sh: number): HTMLCanvasElement {
+  const c = document.createElement("canvas")
+  c.width = sw
+  c.height = sh
+  const ctx = c.getContext("2d")!
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+  return c
+}
+function applySharpen(c: HTMLCanvasElement): HTMLCanvasElement {
+  const w = c.width, h = c.height
+  const ctx = c.getContext("2d")!
+  const src = ctx.getImageData(0, 0, w, h)
+  const dst = ctx.createImageData(w, h)
+  const s = src.data, d = dst.data
+  const k = [0, -1, 0, -1, 5, -1, 0, -1, 0]
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      for (let ch = 0; ch < 3; ch++) {
+        let sum = 0
+        let i = 0
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const px = ((y + ky) * w + (x + kx)) * 4 + ch
+            sum += s[px] * k[i++]
+          }
+        }
+        d[(y * w + x) * 4 + ch] = Math.max(0, Math.min(255, sum))
+      }
+      d[(y * w + x) * 4 + 3] = s[(y * w + x) * 4 + 3]
+    }
+  }
+  ctx.putImageData(dst, 0, 0)
+  return c
+}
+function applyContrastSaturation(c: HTMLCanvasElement, contrastPct: number, saturationPct: number, brightnessPct: number, grayscale: boolean): HTMLCanvasElement {
+  const w = c.width, h = c.height
+  const ctx = c.getContext("2d")!
+  const img = ctx.getImageData(0, 0, w, h)
+  const d = img.data
+  const cf = (259 * (contrastPct + 255)) / (255 * (259 - contrastPct))
+  const bf = brightnessPct
+  const sf = 1 + saturationPct / 100
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2]
+    r = cf * (r - 128) + 128 + bf
+    g = cf * (g - 128) + 128 + bf
+    b = cf * (b - 128) + 128 + bf
+    if (grayscale) {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b
+      r = gray; g = gray; b = gray
+    } else {
+      const max = Math.max(r, g, b), min = Math.min(r, g, b)
+      const l = (max + min) / 2 / 255
+      let sVal = 0
+      if (max !== min) {
+        const delta = (max - min) / 255
+        sVal = l > 0.5 ? delta / (2 - 2 * l) : delta / (2 * l)
+      }
+      if (sVal > 0) {
+        const rr = r - (r + g + b) / 3
+        const gg = g - (r + g + b) / 3
+        const bb = b - (r + g + b) / 3
+        r = r + rr * (sf - 1)
+        g = g + gg * (sf - 1)
+        b = b + bb * (sf - 1)
+      }
+    }
+    d[i] = Math.max(0, Math.min(255, r))
+    d[i + 1] = Math.max(0, Math.min(255, g))
+    d[i + 2] = Math.max(0, Math.min(255, b))
+  }
+  ctx.putImageData(img, 0, 0)
+  return c
+}
 async function cropVariant(url: string, marginRatio: number): Promise<string> {
   const img = await loadImage(url)
   const w = img.width
@@ -72,33 +146,47 @@ async function cropVariant(url: string, marginRatio: number): Promise<string> {
   const sy = Math.max(0, my)
   const sw = Math.max(1, w - 2 * mx)
   const sh = Math.max(1, h - 2 * my)
-  const canvas = document.createElement("canvas")
-  canvas.width = sw
-  canvas.height = sh
-  const ctx = canvas.getContext("2d")!
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
-  return canvas.toDataURL("image/jpeg", 0.92)
+  const c = drawToCanvas(img, sx, sy, sw, sh)
+  return c.toDataURL("image/jpeg", 0.92)
+}
+async function enhanceVariant(url: string, marginRatio: number, contrastPct: number, saturationPct: number, brightnessPct: number, doSharpen: boolean, doGrayscale: boolean): Promise<string> {
+  const img = await loadImage(url)
+  const w = img.width
+  const h = img.height
+  const mx = Math.floor(w * marginRatio)
+  const my = Math.floor(h * marginRatio)
+  const sx = Math.max(0, mx)
+  const sy = Math.max(0, my)
+  const sw = Math.max(1, w - 2 * mx)
+  const sh = Math.max(1, h - 2 * my)
+  let c = drawToCanvas(img, sx, sy, sw, sh)
+  c = applyContrastSaturation(c, contrastPct, saturationPct, brightnessPct, doGrayscale)
+  if (doSharpen) c = applySharpen(c)
+  return c.toDataURL("image/jpeg", 0.92)
 }
 async function buildImageSet(file: File): Promise<string[]> {
   const original = await fileToDataURL(file)
-  const light = await cropVariant(original, 0.08)
-  const tight = await cropVariant(original, 0.15)
-  return [tight, light, original]
+  const v1 = await enhanceVariant(original, 0.15, 70, 35, 10, true, false)
+  const v2 = await enhanceVariant(original, 0.08, 55, 20, 5, true, false)
+  const v3 = await enhanceVariant(original, 0.15, 85, 0, 0, false, true)
+  const v4 = original
+  return [v1, v2, v3, v4]
 }
 
 const VISION_SYSTEM_PROMPT = `You are parsing a photographed monthly calendar grid. Return json only.
-Task:
-1) Identify the calendar grid region. Ignore status bars, app toolbars, footers, and any non-grid UI.
-2) Read the month and year from headers near the grid. If missing, infer from visible month label; if still missing, use current year.
+Steps:
+1) Focus only on the calendar grid. Ignore app chrome, headers, footers, toolbars, and non-grid areas.
+2) Read month and year near the grid. If the year is missing, infer from visible labels; otherwise use the current year.
 3) Map weekday headers (Sunday..Saturday) to columns. Map numbered day cells to dates.
-4) For each cell, extract separate items. Do not combine distinct items with "&". Preserve decimals (e.g., "2.5").
-5) If a multi-day arrow/line spans across cells (e.g., "Modules at home"), expand into one event per covered day, each with that date.
-6) Times: range→use start; "noon"→"12:00"; "midnight"→"00:00"; if text implies due/submit with no time→"23:59".
-Schema only:
+4) Cross-check alignment: dates must increase left→right and top→bottom. If a cell's numeric day conflicts with weekday alignment, prefer the alignment and adjust off-by-one errors.
+5) Extract separate items within a cell as separate events. Do not combine distinct items. Preserve decimals in identifiers.
+6) If a multi-day arrow or line spans across adjacent cells (e.g., "Modules at home"), create one event per covered date with the same name.
+7) Times: for ranges use the start time. "noon"→"12:00", "midnight"→"00:00". If text implies due/submit with no time, use "23:59".
+Schema:
 {"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
 
 async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = [{ type: "text", text: "Return json only. Extract events with dates from the calendar grid. Expand multi-day spans to one event per day." }]
+  const userParts: any[] = [{ type: "text", text: "Return json only. Use weekday→column alignment. Expand multi-day arrows into one event per covered day." }]
   for (const url of images) userParts.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
