@@ -100,39 +100,45 @@ async function extractTextFromDocx(file: File): Promise<string> {
   return text
 }
 
-const TEXT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi. Return only JSON.
+const STRICT_SYSTEM_PROMPT = `You are an event extractor for schedules and syllabi. Return only JSON.
 Input is normalized text lines (some are flattened table rows joined with "|").
-Ignore noise such as single-letter weekdays, section/room codes, locations, instructor names, emails, URLs.
+Ignore noise such as single-letter weekdays, section/room codes, locations, instructor names, emails, and URLs.
 Extract only dated events or assignments with concise names.
 Do not emit combined names like "A & B" or "A, B, C" when items A, B, C appear separately; output one event per item.
-Preserve decimals and section identifiers exactly (e.g., "2.5", "1.1, 1.2").
+Preserve decimals and section identifiers exactly (e.g., "2.5", "1.1, 1.2", "5.1 & 5.2").
 Rules:
-- Output schema only: {"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Class|Lecture|Lab|Meeting|Appointment|Holiday|Break|No_Class|School_Closed|Other"|null}]}
-- Names must be ≤ 40 chars, no dates/times/pronouns/descriptions.
-- Use current year if missing.
-- Accept dates like YYYY-MM-DD, MM/DD, M/D, "Oct 5", "October 5".
-- Times: "12 pm", "12:00pm", "12–1 pm" → start time; "noon"→"12:00"; "midnight"→"00:00".
-- If due/submit/turn-in and no time, use "23:59".
-- If no time in the line, "event_time" = null.
-- Be exhaustive but never create merged duplicate lines.
+{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Class|Lecture|Lab|Meeting|Appointment|Holiday|Break|No_Class|School_Closed|Other"|null}]}
+Names ≤ 40 chars, no dates/times/pronouns/descriptions.
+Use current year if missing.
+Accept dates like YYYY-MM-DD, MM/DD, M/D, "Oct 5", "October 5".
+Times: ranges use start; "noon"→"12:00"; "midnight"→"00:00".
+If due/submit/turn-in and no time, use "23:59".
+If no time in the line, event_time = null.
 Return only valid JSON. The answer must be JSON.`
+
+const RECALL_SYSTEM_PROMPT = `You are an event extractor. Return only JSON.
+You will receive the same normalized lines again. Add any dated events that could have been missed previously, but do not create merged combined items.
+Preserve decimals and section identifiers exactly.
+Follow the same schema and rules as before.
+Return only valid JSON. The answer must be JSON.
+{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Class|Lecture|Lab|Meeting|Appointment|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
 
 const REPAIR_PROMPT = `You will receive possibly malformed JSON for:
 {"events":[{"event_name":"...", "event_date":"YYYY-MM-DD", "event_time":"HH:MM"|null, "event_tag":"..."|null}]}
 Fix only syntax/shape. Return valid JSON exactly in that shape. No commentary. The answer must be JSON.`
 
-async function callOpenAI_JSON_TextBatch(batchText: string, batchIndex: number, totalBatches: number): Promise<{ parsed: any; tokensUsed: number }> {
+async function callJSON(model: string, systemPrompt: string, userText: string, maxTokens: number, temperature: number): Promise<{ parsed: any; tokensUsed: number }> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model: TEXT_MODEL,
+      model,
       messages: [
-        { role: "system", content: TEXT_SYSTEM_PROMPT },
-        { role: "user", content: `Batch ${batchIndex + 1}/${totalBatches}. Return JSON only.\n---BEGIN---\n${batchText}\n---END---` }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Return JSON only.\n---BEGIN JSON INPUT---\n${userText}\n---END JSON INPUT---` }
       ],
-      temperature: 0,
-      max_tokens: MAX_TOKENS_TEXT,
+      temperature,
+      max_tokens: maxTokens,
       response_format: { type: "json_object" }
     })
   })
@@ -147,13 +153,13 @@ async function callOpenAI_JSON_TextBatch(batchText: string, batchIndex: number, 
     const parsed = JSON.parse(content)
     return { parsed, tokensUsed }
   } catch {
-    const repaired = await repairMalformedJSON(content)
+    const repaired = await repairJSON(content)
     if (!repaired) throw new Error("Failed to parse AI response as JSON")
-    return repaired
+    return { parsed: repaired.parsed, tokensUsed: tokensUsed + repaired.tokensUsed }
   }
 }
 
-async function repairMalformedJSON(bad: string): Promise<{ parsed: any; tokensUsed: number } | null> {
+async function repairJSON(bad: string): Promise<{ parsed: any; tokensUsed: number } | null> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
@@ -191,20 +197,26 @@ export class OpenAIWordService {
     const lines = structured.split("\n")
     const batches = chunkLines(lines, MAX_LINES_PER_TEXT_BATCH, MAX_CHARS_PER_TEXT_BATCH)
     let tokens = 0
-    let allEvents: ParsedEvent[] = []
+    let pass1: ParsedEvent[] = []
     for (let i = 0; i < batches.length; i++) {
-      const { parsed, tokensUsed } = await callOpenAI_JSON_TextBatch(batches[i], i, batches.length)
+      const { parsed, tokensUsed } = await callJSON(TEXT_MODEL, STRICT_SYSTEM_PROMPT, `Batch ${i + 1}/${batches.length}\n${batches[i]}`, MAX_TOKENS_TEXT, 0)
       tokens += tokensUsed
-      const evs = (parsed.events || []) as ParsedEvent[]
-      allEvents.push(...evs.slice(0, BATCH_EVENT_CAP))
+      pass1 = pass1.concat(((parsed?.events || []) as ParsedEvent[]).slice(0, BATCH_EVENT_CAP))
     }
-    allEvents = postNormalizeEvents(allEvents)
-    allEvents = dedupeEvents(allEvents)
-    allEvents.sort((a, b) =>
+    let pass2: ParsedEvent[] = []
+    for (let i = 0; i < batches.length; i++) {
+      const { parsed, tokensUsed } = await callJSON(TEXT_MODEL, RECALL_SYSTEM_PROMPT, `Batch ${i + 1}/${batches.length}\n${batches[i]}`, MAX_TOKENS_TEXT, 0.2)
+      tokens += tokensUsed
+      pass2 = pass2.concat(((parsed?.events || []) as ParsedEvent[]).slice(0, BATCH_EVENT_CAP))
+    }
+    let all = pass1.concat(pass2)
+    all = postNormalizeEvents(all)
+    all = dedupeEvents(all)
+    all.sort((a, b) =>
       a.event_date.localeCompare(b.event_date) ||
       ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) ||
       a.event_name.localeCompare(b.event_name)
     )
-    return { events: allEvents, tokensUsed: tokens }
+    return { events: all, tokensUsed: tokens }
   }
 }
