@@ -275,27 +275,28 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 )}
               </div>
 
-              <div className="slider-group">
-                <label>Apply Label to All</label>
-                <label className="switch">
-                  <input
-                    type="checkbox"
-                    checked={applyLabelToAll}
-                    onChange={e => setApplyLabelToAll(e.target.checked)}
-                  />
-                  <span className="slider"></span>
-                </label>
-              </div>
+           <div className="field-group full">
+  <label>Label</label>
+  <input
+    type="text"
+    value={event.label || ''}
+    onChange={e => handleFieldChange(event.tempId, 'label', e.target.value)}
+    placeholder="e.g., CS101, BIO-200"
+  />
+</div>
 
-              <div className="field-group full">
-                <label>Label</label>
-                <input
-                  type="text"
-                  value={event.label || ''}
-                  onChange={e => handleFieldChange(event.tempId, 'label', e.target.value)}
-                  placeholder="e.g., CS101, BIO-200"
-                />
-              </div>
+<div className="slider-group apply-to-all">
+  <label>Apply Label to All</label>
+  <label className="switch">
+    <input
+      type="checkbox"
+      checked={applyLabelToAll}
+      onChange={e => setApplyLabelToAll(e.target.checked)}
+    />
+    <span className="slider"></span>
+  </label>
+</div>
+
 
               <div className="field-group full">
                 <label>Tag</label>
