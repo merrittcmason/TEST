@@ -5,7 +5,7 @@ import * as XLSX from "xlsx"
 import * as pdfjsLib from "pdfjs-dist"
 import { GlobalWorkerOptions } from "pdfjs-dist"
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url"
-import mammoth from "mammoth"
+import * as mammoth from "mammoth"
 import * as chrono from "chrono-node"
 import { DateTime } from "luxon"
 
@@ -127,9 +127,18 @@ async function preflightFileSize(file: File) {
     }
     if (rows > PREVIEW_LIMITS.excelMaxTotalRows || cells > PREVIEW_LIMITS.excelMaxTotalCells) throw new Error("Spreadsheet too large")
   } else if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) {
-    const arrayBuffer = await file.arrayBuffer()
-    const { value } = await (mammoth as any).convertToPlainText({ arrayBuffer })
-    if (value.length > PREVIEW_LIMITS.wordMaxChars) throw new Error("Document too long")
+    const ab = await file.arrayBuffer()
+    let plain = ""
+    try {
+      const r1 = await mammoth.extractRawText({ arrayBuffer: ab } as any)
+      plain = r1?.value || ""
+    } catch {}
+    if (!plain) {
+      const r2 = await mammoth.convertToHtml({ arrayBuffer: ab } as any)
+      const html = r2?.value || ""
+      plain = html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+    }
+    if (plain.length > PREVIEW_LIMITS.wordMaxChars) throw new Error("Document too long")
   } else if (type.includes("pdf") || name.endsWith(".pdf")) {
     const data = new Uint8Array(await file.arrayBuffer())
     const pdf = await pdfjsLib.getDocument({ data }).promise
