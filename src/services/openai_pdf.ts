@@ -87,7 +87,7 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
     model: MODEL,
     temperature: 0,
     reasoning: { effort: "medium" },
-    messages: [
+    input: [
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "user",
