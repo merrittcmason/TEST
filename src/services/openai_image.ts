@@ -11,10 +11,10 @@ export interface ParseResult {
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const VISION_MODEL = "gpt-4o"
-const MAX_TOKENS_VISION = 800
+const MAX_TOKENS_VISION = 900
 
 function toTitleCase(s: string): string {
-  return (s || "").trim().replace(/\s+/g, " ").split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
+  return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
 }
 function capTag(t: string | null | undefined): string | null {
   if (!t || typeof t !== "string") return null
@@ -23,7 +23,7 @@ function capTag(t: string | null | undefined): string | null {
   return s[0].toUpperCase() + s.slice(1).toLowerCase()
 }
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
-  return (events || []).map((e) => {
+  return (events || []).map(e => {
     let name = (e.event_name || "").trim()
     name = toTitleCase(name).replace(/\s{2,}/g, " ")
     if (name.length > 60) name = name.slice(0, 57).trimEnd() + "..."
@@ -44,17 +44,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   }
   return out
 }
-
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = url
-  })
-}
-async function fileToDataURL(file: File): Promise<string> {
+function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
     r.onload = () => resolve(r.result as string)
@@ -62,114 +52,23 @@ async function fileToDataURL(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
 }
-function drawToCanvas(img: HTMLImageElement, sx: number, sy: number, sw: number, sh: number): HTMLCanvasElement {
-  const c = document.createElement("canvas")
-  c.width = sw
-  c.height = sh
-  const ctx = c.getContext("2d")!
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
-  return c
-}
-function applySharpen(c: HTMLCanvasElement): HTMLCanvasElement {
-  const w = c.width, h = c.height
-  const ctx = c.getContext("2d")!
-  const src = ctx.getImageData(0, 0, w, h)
-  const dst = ctx.createImageData(w, h)
-  const s = src.data, d = dst.data
-  const k = [0, -1, 0, -1, 5, -1, 0, -1, 0]
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      for (let ch = 0; ch < 3; ch++) {
-        let sum = 0
-        let i = 0
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const px = ((y + ky) * w + (x + kx)) * 4 + ch
-            sum += s[px] * k[i++]
-          }
-        }
-        d[(y * w + x) * 4 + ch] = Math.max(0, Math.min(255, sum))
-      }
-      d[(y * w + x) * 4 + 3] = s[(y * w + x) * 4 + 3]
-    }
-  }
-  ctx.putImageData(dst, 0, 0)
-  return c
-}
-function applyContrastSaturation(c: HTMLCanvasElement, contrastPct: number, saturationPct: number, brightnessPct: number, grayscale: boolean): HTMLCanvasElement {
-  const w = c.width, h = c.height
-  const ctx = c.getContext("2d")!
-  const img = ctx.getImageData(0, 0, w, h)
-  const d = img.data
-  const cf = (259 * (contrastPct + 255)) / (255 * (259 - contrastPct))
-  const bf = brightnessPct
-  const sf = 1 + saturationPct / 100
-  for (let i = 0; i < d.length; i += 4) {
-    let r = d[i], g = d[i + 1], b = d[i + 2]
-    r = cf * (r - 128) + 128 + bf
-    g = cf * (g - 128) + 128 + bf
-    b = cf * (b - 128) + 128 + bf
-    if (grayscale) {
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b
-      r = gray; g = gray; b = gray
-    } else {
-      const avg = (r + g + b) / 3
-      r = avg + (r - avg) * sf
-      g = avg + (g - avg) * sf
-      b = avg + (b - avg) * sf
-    }
-    d[i] = Math.max(0, Math.min(255, r))
-    d[i + 1] = Math.max(0, Math.min(255, g))
-    d[i + 2] = Math.max(0, Math.min(255, b))
-  }
-  ctx.putImageData(img, 0, 0)
-  return c
-}
-async function enhanceVariant(url: string, marginRatio: number, contrastPct: number, saturationPct: number, brightnessPct: number, doSharpen: boolean, doGrayscale: boolean): Promise<string> {
-  const img = await loadImage(url)
-  const w = img.width
-  const h = img.height
-  const mx = Math.floor(w * marginRatio)
-  const my = Math.floor(h * marginRatio)
-  const sx = Math.max(0, mx)
-  const sy = Math.max(0, my)
-  const sw = Math.max(1, w - 2 * mx)
-  const sh = Math.max(1, h - 2 * my)
-  let c = drawToCanvas(img, sx, sy, sw, sh)
-  c = applyContrastSaturation(c, contrastPct, saturationPct, brightnessPct, doGrayscale)
-  if (doSharpen) c = applySharpen(c)
-  return c.toDataURL("image/jpeg", 0.92)
-}
-async function buildImageSet(file: File): Promise<string[]> {
-  const original = await fileToDataURL(file)
-  const v1 = await enhanceVariant(original, 0.15, 70, 35, 10, true, false)
-  const v2 = await enhanceVariant(original, 0.08, 55, 20, 5, true, false)
-  const v3 = await enhanceVariant(original, 0.15, 85, 0, 0, false, true)
-  const v4 = original
-  return [v1, v2, v3, v4]
-}
 
-const VISION_SYSTEM_PROMPT = `Return json only. You are parsing screenshots that may contain a monthly calendar grid or a list-style calendar.
-If a grid is visible:
-- Ignore all non-grid UI. Focus on the calendar table.
-- Read month and year near the grid. If year absent, infer from labels; otherwise use current year.
-- Map columns to weekday headers (Sunday..Saturday). Map numbered day cells to dates.
-- Within each cell, extract every distinct item as its own event. Never shift an item to the previous or next day.
-- If multiple items appear in the same cell, keep all of them on that exact date.
-- For multi-day bars/arrows spanning adjacent cells (e.g., "Modules at home"), create one event per covered date with the same name.
-- Cross-check alignment: dates increase left→right, top→bottom. Resolve off-by-one only if a numeric day conflicts with column weekday; otherwise keep the cell assignment.
-If a list-style view is visible instead of a grid:
-- Use explicit date headings and associate each subsequent item with the most recent date heading until a new heading appears.
-- If a time appears without a date, attach it to the nearest prior date heading.
-Normalization:
-- event_date "YYYY-MM-DD"
-- event_time "HH:MM" or null. Ranges use the start time. "noon"→"12:00", "midnight"→"00:00". Due/submit without time→"23:59".
-- Preserve decimals in identifiers.
-Schema:
-{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
+const VISION_SYSTEM_PROMPT = `Return JSON only. You are an OCR scheduler. The user will send images that contain information to be put on a calendar. Images may be calendar grids, agenda/list views, tables, flyers, or screenshots that include extra UI.
+Core rules:
+1) Detect the primary schedule region and ignore unrelated chrome such as app toolbars, buttons, status bars, page headers/footers.
+2) Resolve dates. If a monthly grid is visible, read the month and year near the grid; map columns to weekday headers (Sunday..Saturday) and numbered cells to dates. If a list/agenda, use the nearest visible date heading for following items until a new heading appears. If no explicit year, use the current year.
+3) Multiple items in one day must remain on that exact date. Do not move an item to the prior or next day to “balance” duplicates. When a day has N items, emit N separate events with identical event_date.
+4) Multi-day bars/arrows or phrases indicating spans (e.g., “Modules at home” with an arrow across cells, or “Oct 7–11”) must be expanded to one event per covered date, same name each day.
+5) Prefer the cell that contains the numeric day label for anchoring. If an item visually overlaps two cells, choose the cell whose date text is closest; if still ambiguous, choose the later date.
+6) Preserve decimals and section identifiers in names (e.g., “Practice Problems 2.5”).
+7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If wording implies due/submit/turn-in with no time, use “23:59”; otherwise null.
+8) Keep names short, title-case, no dates/times in the name, ≤ 50 chars.
+Schema only:
+{"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}
+Return JSON only.`
 
 async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = [{ type: "text", text: "Return json only. Keep multiple items in the same cell on the same date. Expand multi-day arrows to one event per day they cover." }]
+  const userParts: any[] = [{ type: "text", text: "Return JSON only. Extract dated events from these images. Keep all items that share the same day on that exact date. Expand multi-day spans to one event per covered date." }]
   for (const url of images) userParts.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -199,10 +98,10 @@ async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; 
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-    const variants = await buildImageSet(file)
-    const { parsed, tokensUsed } = await callOpenAI_JSON_Vision(variants)
+    const url = await fileToDataURL(file)
+    const { parsed, tokensUsed } = await callOpenAI_JSON_Vision([url])
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
-    events = events.filter((e) => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
+    events = events.filter(e => typeof e.event_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.event_date))
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
     events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
