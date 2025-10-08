@@ -103,7 +103,8 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
         ]
       }
     ],
-    text: format{ { type: "json" }}
+    text: { format: { type: "json" } },
+
   }
 
   const r = await fetch("https://api.openai.com/v1/responses", {
