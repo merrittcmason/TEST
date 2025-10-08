@@ -1,6 +1,6 @@
 import { OpenAIExcelService } from "./openai_excel"
 import { OpenAIPdfService } from "./openai_pdf"
-import { GoogleImageService } from "./google_image.ts"
+import { GoogleImageService } from "./google_image"
 import * as XLSX from "xlsx"
 import * as pdfjsLib from "pdfjs-dist"
 import { GlobalWorkerOptions } from "pdfjs-dist"
@@ -174,7 +174,7 @@ export class OpenAIFilesService {
     await preflightFileSize(file)
     const name = (file.name || "").toLowerCase()
     const type = (file.type || "").toLowerCase()
-    if (type.startsWith("image/")) return await OpenAIImageService.parse(file)
+    if (type.startsWith("image/")) return await GoogleImageService.parse(file)
     if (type.includes("pdf") || name.endsWith(".pdf")) return await OpenAIPdfService.parse(file)
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) return await OpenAIExcelService.parse(file)
     if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) return await (await loadWordService()).parse(file)
