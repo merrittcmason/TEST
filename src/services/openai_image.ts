@@ -53,9 +53,20 @@ function fileToDataURL(file: File): Promise<string> {
   })
 }
 
-const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
+const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images or information that needs to be scheduled (use your built-in OCR).
 
 Goal: OUTPUT ONLY events that have a resolvable calendar date.
+
+Core rules:
+1) Detect the primary information region and ignore unrelated information and UI  such as app toolbars, buttons, status bars, page headers/footers, etc...
+2) Resolve dates. If a monthly grid is visible, accurately map the boxs and the number inside that lists the date; map columns to weekday headers (Sunday..Saturday) and numbered cells to dates. If a list/agenda, use the nearest visible date heading for following items until a new heading appears. If no explicit year, use the current year.
+3) Multiple items in one day must remain on that exact date. Do not move an item to the prior or next day to “balance” duplicates. When a day has N items, emit N separate events with identical event_date.
+4) Multi-day bars/arrows or phrases indicating spans (e.g., “Vacation” with an arrow across cells, or “Oct 7–11”) must be expanded to one event per covered date, same name each day. If an arrow is present, an event should be scheduled for every day that the arrown touches or crosses.
+5) Prefer the cell that contains the numeric day label for anchoring. If an item visually overlaps two cells, choose the cell whose date text is closest; if still ambiguous, choose the later date.
+6) Preserve decimals and section identifiers in names (e.g., “Practice Problems 2.5”).
+7) Times: “noon”→“12:00”, “midnight”→“00:00”. For ranges, use the start time. If wording implies due/submit/turn-in with no time, use “23:59”; otherwise null.
+8) Keep names short, title-case, no dates/times in the name, ≤ 50 chars.
+Schema only:
 
 How to read dates:
 - Accept: 9/05, 10/2, 10-02, Oct 2, October 2, 10/2/25, 2025-10-02.
