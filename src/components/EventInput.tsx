@@ -86,6 +86,46 @@ export function EventInput({ onEventsExtracted, onResumeDrafts }: EventInputProp
     }
   };
 
+  const isDocType = (file: File) => {
+    const mt = file.type;
+    const name = file.name.toLowerCase();
+    if (mt === 'application/msword') return true;
+    if (mt === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return true;
+    if (name.endsWith('.doc') || name.endsWith('.docx')) return true;
+    return false;
+  };
+
+  const convertDocToPdfBrowser = async (file: File): Promise<File> => {
+    try {
+      const mammothMod: any = await import('mammoth');
+      const html2pdfMod: any = await import('html2pdf.js');
+      const arrayBuffer = await file.arrayBuffer();
+      const res = await mammothMod.convertToHtml({ arrayBuffer });
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-10000px';
+      container.style.top = '-10000px';
+      container.style.width = '800px';
+      container.innerHTML = res.value;
+      document.body.appendChild(container);
+      const instance = html2pdfMod.default ? html2pdfMod.default() : (html2pdfMod() as any);
+      const blob: Blob = await instance.from(container).set({ margin: 10, filename: file.name.replace(/\.(docx?|DOCX?)$/, '.pdf') }).outputPdf('blob');
+      document.body.removeChild(container);
+      const pdfFile = new File([blob], file.name.replace(/\.(docx?|DOCX?)$/, '.pdf'), { type: 'application/pdf' });
+      return pdfFile;
+    } catch {
+      return file;
+    }
+  };
+
+  const ensurePdfForAnalysis = async (file: File) => {
+    if (isDocType(file)) {
+      const pdf = await convertDocToPdfBrowser(file);
+      return pdf;
+    }
+    return file;
+  };
+
   const handleSelectedFile = async (file: File | undefined | null) => {
     if (!file) {
       setError('Please select a file');
@@ -100,7 +140,13 @@ export function EventInput({ onEventsExtracted, onResumeDrafts }: EventInputProp
     setLoading(true);
     try {
       await checkQuotas(true);
-      const result = await OpenAIFilesService.parseFile(file);
+      const normalized = await ensurePdfForAnalysis(file);
+      if (normalized.size > maxSize) {
+        setError('Converted file exceeds 10MB limit');
+        setLoading(false);
+        return;
+      }
+      const result = await OpenAIFilesService.parseFile(normalized);
       if (result.events.length === 0) {
         setError('No events found in the file.');
         setLoading(false);
