@@ -233,10 +233,7 @@ Rules:
 - If no time in the line, event_time = null.
 - If a line mentions multiple items for a date, create multiple events for that date.
 - Be exhaustive; do not skip minor items.
-Return ONLY valid JSON. No commentary, no markdown, no trailing commas.`;
-
-const VISION_SYSTEM_PROMPT = `You are an event extractor reading schedule pages as images (use your built-in OCR).
-
+Return ONLY valid JSON. No commentary, no markdown, no trailing commas.
 Goal: OUTPUT ONLY events that have a resolvable calendar date.
 
 How to read dates:
