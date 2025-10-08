@@ -24,12 +24,7 @@ export interface ParseResult {
 }
 
 function toTitleCase(s: string): string {
-  return (s || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .split(" ")
-    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
-    .join(" ")
+  return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
 }
 
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
@@ -99,7 +94,6 @@ const EVENT_OBJECT_SCHEMA = {
   required: ["events"]
 }
 
-
 async function uploadFile(file: File): Promise<string> {
   if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
   const form = new FormData()
@@ -124,10 +118,7 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
     temperature: 0,
     reasoning: { effort: "medium" },
     input: [
-      {
-        role: "system",
-        content: [{ type: "input_text", text: SYSTEM_PROMPT }]
-      },
+      { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
       {
         role: "user",
         content: [
@@ -140,36 +131,31 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
       format: {
         type: "json_schema",
         name: "calendar_events",
-        schema: EVENT_ARRAY_SCHEMA,
+        schema: EVENT_OBJECT_SCHEMA,
         strict: true
       }
     },
     max_output_tokens: 1800
   }
-
   const r = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
     body: JSON.stringify(body)
   })
-
   if (!r.ok) {
     const err = await r.json().catch(() => ({}))
     throw new Error(err?.error?.message || "OpenAI Responses request failed")
   }
-
   const j = await r.json()
-  const text = j?.output?.[0]?.content?.[0]?.text ?? "[]"
+  const text = j?.output?.[0]?.content?.[0]?.text ?? '{"events":[]}'
   const tokensUsed = j?.usage?.total_tokens ?? 0
-
-  let parsed: ParsedEvent[] = []
+  let parsedObj: { events: ParsedEvent[] } = { events: [] }
   try {
-    parsed = JSON.parse(text)
+    parsedObj = JSON.parse(text)
   } catch {
-    parsed = []
+    parsedObj = { events: [] }
   }
-
-  return { parsed, tokensUsed }
+  return { parsed: parsedObj.events || [], tokensUsed }
 }
 
 export class OpenAIPdfService {
