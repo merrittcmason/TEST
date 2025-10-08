@@ -169,7 +169,7 @@ Return ONLY a JSON array of event objects matching these fields.`
       model: "gpt-4o-mini",
       temperature: 0,
       reasoning: { effort: "medium" },
-      messages: [
+      input: [
         {
           role: "system",
           content: systemPrompt
