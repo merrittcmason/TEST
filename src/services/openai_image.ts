@@ -113,21 +113,10 @@ function applyContrastSaturation(c: HTMLCanvasElement, contrastPct: number, satu
       const gray = 0.299 * r + 0.587 * g + 0.114 * b
       r = gray; g = gray; b = gray
     } else {
-      const max = Math.max(r, g, b), min = Math.min(r, g, b)
-      const l = (max + min) / 2 / 255
-      let sVal = 0
-      if (max !== min) {
-        const delta = (max - min) / 255
-        sVal = l > 0.5 ? delta / (2 - 2 * l) : delta / (2 * l)
-      }
-      if (sVal > 0) {
-        const rr = r - (r + g + b) / 3
-        const gg = g - (r + g + b) / 3
-        const bb = b - (r + g + b) / 3
-        r = r + rr * (sf - 1)
-        g = g + gg * (sf - 1)
-        b = b + bb * (sf - 1)
-      }
+      const avg = (r + g + b) / 3
+      r = avg + (r - avg) * sf
+      g = avg + (g - avg) * sf
+      b = avg + (b - avg) * sf
     }
     d[i] = Math.max(0, Math.min(255, r))
     d[i + 1] = Math.max(0, Math.min(255, g))
@@ -135,19 +124,6 @@ function applyContrastSaturation(c: HTMLCanvasElement, contrastPct: number, satu
   }
   ctx.putImageData(img, 0, 0)
   return c
-}
-async function cropVariant(url: string, marginRatio: number): Promise<string> {
-  const img = await loadImage(url)
-  const w = img.width
-  const h = img.height
-  const mx = Math.floor(w * marginRatio)
-  const my = Math.floor(h * marginRatio)
-  const sx = Math.max(0, mx)
-  const sy = Math.max(0, my)
-  const sw = Math.max(1, w - 2 * mx)
-  const sh = Math.max(1, h - 2 * my)
-  const c = drawToCanvas(img, sx, sy, sw, sh)
-  return c.toDataURL("image/jpeg", 0.92)
 }
 async function enhanceVariant(url: string, marginRatio: number, contrastPct: number, saturationPct: number, brightnessPct: number, doSharpen: boolean, doGrayscale: boolean): Promise<string> {
   const img = await loadImage(url)
@@ -173,20 +149,27 @@ async function buildImageSet(file: File): Promise<string[]> {
   return [v1, v2, v3, v4]
 }
 
-const VISION_SYSTEM_PROMPT = `You are parsing a photographed monthly calendar grid. Return json only.
-Steps:
-1) Focus only on the calendar grid. Ignore app chrome, headers, footers, toolbars, and non-grid areas.
-2) Read month and year near the grid. If the year is missing, infer from visible labels; otherwise use the current year.
-3) Map weekday headers (Sunday..Saturday) to columns. Map numbered day cells to dates.
-4) Cross-check alignment: dates must increase left→right and top→bottom. If a cell's numeric day conflicts with weekday alignment, prefer the alignment and adjust off-by-one errors.
-5) Extract separate items within a cell as separate events. Do not combine distinct items. Preserve decimals in identifiers.
-6) If a multi-day arrow or line spans across adjacent cells (e.g., "Modules at home"), create one event per covered date with the same name.
-7) Times: for ranges use the start time. "noon"→"12:00", "midnight"→"00:00". If text implies due/submit with no time, use "23:59".
+const VISION_SYSTEM_PROMPT = `Return json only. You are parsing screenshots that may contain a monthly calendar grid or a list-style calendar.
+If a grid is visible:
+- Ignore all non-grid UI. Focus on the calendar table.
+- Read month and year near the grid. If year absent, infer from labels; otherwise use current year.
+- Map columns to weekday headers (Sunday..Saturday). Map numbered day cells to dates.
+- Within each cell, extract every distinct item as its own event. Never shift an item to the previous or next day.
+- If multiple items appear in the same cell, keep all of them on that exact date.
+- For multi-day bars/arrows spanning adjacent cells (e.g., "Modules at home"), create one event per covered date with the same name.
+- Cross-check alignment: dates increase left→right, top→bottom. Resolve off-by-one only if a numeric day conflicts with column weekday; otherwise keep the cell assignment.
+If a list-style view is visible instead of a grid:
+- Use explicit date headings and associate each subsequent item with the most recent date heading until a new heading appears.
+- If a time appears without a date, attach it to the nearest prior date heading.
+Normalization:
+- event_date "YYYY-MM-DD"
+- event_time "HH:MM" or null. Ranges use the start time. "noon"→"12:00", "midnight"→"00:00". Due/submit without time→"23:59".
+- Preserve decimals in identifiers.
 Schema:
 {"events":[{"event_name":"Title-Case Short Name","event_date":"YYYY-MM-DD","event_time":"HH:MM"|null,"event_tag":"Interview|Exam|Midterm|Quiz|Homework|Assignment|Project|Lab|Lecture|Class|Meeting|Office_Hours|Presentation|Deadline|Workshop|Holiday|Break|No_Class|School_Closed|Other"|null}]}`
 
 async function callOpenAI_JSON_Vision(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = [{ type: "text", text: "Return json only. Use weekday→column alignment. Expand multi-day arrows into one event per covered day." }]
+  const userParts: any[] = [{ type: "text", text: "Return json only. Keep multiple items in the same cell on the same date. Expand multi-day arrows to one event per day they cover." }]
   for (const url of images) userParts.push({ type: "image_url", image_url: { url } })
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
