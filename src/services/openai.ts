@@ -149,6 +149,26 @@ async function preflightFileSize(file: File) {
   }
 }
 
+async function loadWordService() {
+  const mod: any = await import("./openai_docs")
+  const svc = mod.OpenAIWordService || mod.default || mod.OpenAIDocsService || mod.OpenAI_Docs_Service
+  if (!svc || typeof svc.parse !== "function") {
+    const keys = Object.keys(mod || {})
+    throw new Error(`openai_docs missing OpenAIWordService.parse; exports: ${keys.join(",")}`)
+  }
+  return svc as { parse: (file: File) => Promise<ParseResult> }
+}
+
+async function loadExcelService() {
+  const mod: any = await import("./openai_excel")
+  const svc = mod.OpenAIExcelService || mod.default
+  if (!svc || typeof svc.parse !== "function") {
+    const keys = Object.keys(mod || {})
+    throw new Error(`openai_excel missing OpenAIExcelService.parse; exports: ${keys.join(",")}`)
+  }
+  return svc as { parse: (file: File) => Promise<ParseResult> }
+}
+
 export class OpenAIFilesService {
   static async parseFile(file: File): Promise<ParseResult> {
     await preflightFileSize(file)
@@ -157,14 +177,8 @@ export class OpenAIFilesService {
     if (type.startsWith("image/")) return await OpenAIImageService.parse(file)
     if (type.includes("pdf") || name.endsWith(".pdf")) return await OpenAIPdfService.parse(file)
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) return await OpenAIExcelService.parse(file)
-    if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) {
-      const mod = await import("./openai_docs")
-      return await mod.OpenAIWordService.parse(file)
-    }
-    if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) {
-      const mod = await import("./openai_excel")
-      return await mod.OpenAIExcelService.parse(file)
-    }
+    if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) return await (await loadWordService()).parse(file)
+    if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) return await (await loadExcelService()).parse(file)
     throw new Error(`Unsupported file type: ${type || name}`)
   }
 }
@@ -184,8 +198,8 @@ export class OpenAITextService {
       body: JSON.stringify({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: "You are a calendar event parser. Extract events from natural language and return them as JSON." },
-          { role: "user", content: text }
+          { role: "system", content: "You are a calendar event parser. Return only valid JSON with an 'events' array." },
+          { role: "user", content: text + "\nReturn JSON." }
         ],
         temperature: 0,
         max_tokens: 500,
