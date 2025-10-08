@@ -103,7 +103,7 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
         ]
       }
     ],
-    text: { format: { type: "json" } },
+    text: { format: { type: "json_schema" } },
 
   }
 
