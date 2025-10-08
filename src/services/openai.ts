@@ -1,6 +1,6 @@
 import { OpenAIExcelService } from "./openai_excel"
 import { OpenAIPdfService } from "./openai_pdf"
-import { GoogleImageService } from "./google_image"
+import { OpenAIImageService } from "./openai_image"
 import * as XLSX from "xlsx"
 import * as pdfjsLib from "pdfjs-dist"
 import { GlobalWorkerOptions } from "pdfjs-dist"
@@ -149,24 +149,26 @@ async function preflightFileSize(file: File) {
   }
 }
 
-async function loadWordService() {
-  const mod: any = await import("./openai_docs")
-  const svc = mod.OpenAIWordService || mod.default || mod.OpenAIDocsService || mod.OpenAI_Docs_Service
-  if (!svc || typeof svc.parse !== "function") {
-    const keys = Object.keys(mod || {})
-    throw new Error(`openai_docs missing OpenAIWordService.parse; exports: ${keys.join(",")}`)
+async function convertDocToPdfBrowser(file: File): Promise<File> {
+  try {
+    const html2pdfMod: any = await import("html2pdf.js")
+    const arrayBuffer = await file.arrayBuffer()
+    const r = await mammoth.convertToHtml({ arrayBuffer } as any)
+    const container = document.createElement("div")
+    container.style.position = "fixed"
+    container.style.left = "-10000px"
+    container.style.top = "-10000px"
+    container.style.width = "800px"
+    container.innerHTML = r.value || ""
+    document.body.appendChild(container)
+    const instance = html2pdfMod.default ? html2pdfMod.default() : (html2pdfMod() as any)
+    const blob: Blob = await instance.from(container).set({ margin: 10, filename: file.name.replace(/\.(docx?|DOCX?)$/, ".pdf") }).outputPdf("blob")
+    document.body.removeChild(container)
+    const pdfFile = new File([blob], file.name.replace(/\.(docx?|DOCX?)$/, ".pdf"), { type: "application/pdf" })
+    return pdfFile
+  } catch {
+    return file
   }
-  return svc as { parse: (file: File) => Promise<ParseResult> }
-}
-
-async function loadExcelService() {
-  const mod: any = await import("./openai_excel")
-  const svc = mod.OpenAIExcelService || mod.default
-  if (!svc || typeof svc.parse !== "function") {
-    const keys = Object.keys(mod || {})
-    throw new Error(`openai_excel missing OpenAIExcelService.parse; exports: ${keys.join(",")}`)
-  }
-  return svc as { parse: (file: File) => Promise<ParseResult> }
 }
 
 export class OpenAIFilesService {
@@ -174,13 +176,39 @@ export class OpenAIFilesService {
     await preflightFileSize(file)
     const name = (file.name || "").toLowerCase()
     const type = (file.type || "").toLowerCase()
-    if (type.startsWith("image/")) return await GoogleImageService.parse(file)
+    if (type.startsWith("image/")) return await OpenAIImageService.parse(file)
     if (type.includes("pdf") || name.endsWith(".pdf")) return await OpenAIPdfService.parse(file)
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) return await OpenAIExcelService.parse(file)
-    if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) return await (await loadWordService()).parse(file)
-    if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) return await (await loadExcelService()).parse(file)
+    if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) {
+      const pdf = await convertDocToPdfBrowser(file)
+      return await OpenAIPdfService.parse(pdf)
+    }
+    if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) {
+      const excelSvc = await import("./openai_excel")
+      return await (excelSvc.OpenAIExcelService || excelSvc.default).parse(file)
+    }
     throw new Error(`Unsupported file type: ${type || name}`)
   }
+}
+
+const TEXT_SCHEMA = {
+  type: "object",
+  properties: {
+    events: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          event_name: { type: "string" },
+          event_date: { type: ["string", "null"] },
+          event_time: { type: ["string", "null"] },
+          event_tag: { type: ["string", "null"] }
+        },
+        required: ["event_name", "event_date", "event_time", "event_tag"]
+      }
+    }
+  },
+  required: ["events"]
 }
 
 export class OpenAITextService {
@@ -192,27 +220,33 @@ export class OpenAITextService {
       events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
       return { events, tokensUsed: 0 }
     }
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const body = {
+      model: "gpt-4o",
+      temperature: 0,
+      seed: 7,
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "Extract only events explicitly present in the text. Preserve decimals in titles. Dates must be YYYY-MM-DD; times HH:MM 24h or null. Do not infer missing data. Return JSON only matching the schema." },
+            { type: "input_text", text }
+          ]
+        }
+      ],
+      response_format: { type: "json_schema", json_schema: { name: "calendar_events_text", schema: TEXT_SCHEMA, strict: true } }
+    }
+    const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "You are a calendar event parser. Return only valid JSON with an 'events' array." },
-          { role: "user", content: text + "\nReturn JSON." }
-        ],
-        temperature: 0,
-        max_tokens: 500,
-        response_format: { type: "json_object" }
-      })
+      body: JSON.stringify(body)
     })
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}))
-      throw new Error(error?.error?.message || "OpenAI API request failed")
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}))
+      throw new Error(err?.error?.message || "OpenAI API request failed")
     }
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content ?? ""
-    const tokensUsed = data.usage?.total_tokens || 0
+    const data = await r.json()
+    const content = data?.output?.[0]?.content?.[0]?.text ?? "{\"events\":[]}"
+    const tokensUsed = data?.usage?.total_tokens || 0
     const parsed = JSON.parse(content)
     let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
     events = postNormalizeEvents(events)
