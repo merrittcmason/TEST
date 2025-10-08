@@ -2,38 +2,49 @@ import { useState, useEffect } from 'react';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import { useMode, MODE_CONFIG } from '../contexts/ModeContext';
-import type { ParsedEvent } from '../services/openai';
+import { useUserSettings } from '../contexts/UserSettingsContext';
 import './EventConfirmation.css';
 
 interface EventConfirmationProps {
-  events: ParsedEvent[];
+  events: any[];
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-interface EditableEvent extends ParsedEvent {
+interface EditableEvent {
   tempId: string;
-  event_label?: string | null;
+  title: string;
+  all_day: boolean;
+  tag: string | null;
+  label: string | null;
+  start_at: string | null;
+  end_at: string | null;
+  location: string | null;
+  description: string | null;
 }
 
-function dedupeEditable(list: EditableEvent[]) {
-  const seen = new Set<string>();
-  const out: EditableEvent[] = [];
-  for (const e of list) {
-    const k = `${(e.event_name||'').trim().toLowerCase()}|${e.event_date}|${e.event_time||''}|${e.event_tag||''}|${e.event_label||''}`;
-    if (!seen.has(k)) {
-      seen.add(k);
-      out.push(e);
-    }
-  }
-  return out;
+function toUTC(dateTime: string, tz: string) {
+  const local = new Date(dateTime);
+  const utc = new Date(local.toLocaleString('en-US', { timeZone: 'UTC' }));
+  return utc.toISOString();
 }
 
 export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirmationProps) {
   const { user } = useAuth();
   const { mode } = useMode();
+  const { settings } = useUserSettings();
   const [editableEvents, setEditableEvents] = useState<EditableEvent[]>(
-    events.map((e, i) => ({ ...e, tempId: `temp-${i}`, event_label: null }))
+    events.map((e, i) => ({
+      tempId: `temp-${i}`,
+      title: e.title || '',
+      all_day: false,
+      tag: e.tag || null,
+      label: e.label || null,
+      start_at: e.start_at || '',
+      end_at: e.end_at || '',
+      location: e.location || null,
+      description: e.description || null
+    }))
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -42,28 +53,30 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
 
   useEffect(() => {
     if (applyLabelToAll && globalLabel) {
-      setEditableEvents(prev => prev.map(e => ({ ...e, event_label: globalLabel })));
+      setEditableEvents(prev => prev.map(e => ({ ...e, label: globalLabel })));
     }
   }, [applyLabelToAll, globalLabel]);
 
-  const handleFieldChange = (tempId: string, field: keyof EditableEvent, value: string | null) => {
+  const handleFieldChange = (tempId: string, field: keyof EditableEvent, value: any) => {
     setEditableEvents(prev =>
       prev.map(e => (e.tempId === tempId ? { ...e, [field]: value } : e))
     );
-    if (field === 'event_label' && applyLabelToAll) {
+    if (field === 'label' && applyLabelToAll) {
       setGlobalLabel(value || '');
     }
   };
 
   const handleAddEvent = () => {
-    const defaultTime = mode === 'education' ? MODE_CONFIG.education.defaultTime : null;
     const newEvent: EditableEvent = {
       tempId: `temp-${Date.now()}`,
-      event_name: '',
-      event_date: new Date().toISOString().split('T')[0],
-      event_time: defaultTime,
-      event_tag: null,
-      event_label: applyLabelToAll ? globalLabel : null,
+      title: '',
+      all_day: false,
+      tag: null,
+      label: applyLabelToAll ? globalLabel : null,
+      start_at: new Date().toISOString().split('T')[0] + 'T00:00',
+      end_at: new Date().toISOString().split('T')[0] + 'T01:00',
+      location: null,
+      description: null
     };
     setEditableEvents(prev => [...prev, newEvent]);
   };
@@ -74,8 +87,8 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
 
   const validateEvents = () => {
     for (const event of editableEvents) {
-      if (!event.event_name.trim()) throw new Error('All events must have a name');
-      if (!event.event_date) throw new Error('All events must have a date');
+      if (!event.title.trim()) throw new Error('All events must have a title');
+      if (!event.all_day && (!event.start_at || !event.end_at)) throw new Error('All timed events must have start and end times');
     }
   };
 
@@ -88,15 +101,18 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     setLoading(true);
     try {
       validateEvents();
-      const clean = dedupeEditable(editableEvents);
-      const rows = clean.map(e => ({
+      const tz = settings?.timezone || 'UTC';
+      const rows = editableEvents.map(e => ({
         user_id: user.id,
-        name: e.event_name,
-        date: e.event_date,
-        time: e.event_time,
-        all_day: !e.event_time,
-        tag: e.event_tag,
-        label: e.event_label ?? null,
+        title: e.title,
+        all_day: e.all_day,
+        tag: e.tag,
+        label: e.label,
+        start_at: e.all_day ? null : toUTC(e.start_at!, tz),
+        end_at: e.all_day ? null : toUTC(e.end_at!, tz),
+        tzid: 'UTC',
+        location: e.location,
+        description: e.description
       }));
       await DatabaseService.createEvents(rows);
       await DatabaseService.clearDraftEvents(user.id);
@@ -117,14 +133,18 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     setLoading(true);
     try {
       validateEvents();
-      const clean = dedupeEditable(editableEvents);
-      const drafts = clean.map(e => ({
+      const tz = settings?.timezone || 'UTC';
+      const drafts = editableEvents.map(e => ({
         user_id: user.id,
-        event_name: e.event_name,
-        event_date: e.event_date,
-        event_time: e.event_time,
-        event_tag: e.event_tag,
-        label: e.event_label ?? null,
+        title: e.title,
+        all_day: e.all_day,
+        tag: e.tag,
+        label: e.label,
+        start_at: e.all_day ? null : toUTC(e.start_at!, tz),
+        end_at: e.all_day ? null : toUTC(e.end_at!, tz),
+        tzid: 'UTC',
+        location: e.location,
+        description: e.description
       }));
       await DatabaseService.replaceDraftEvents(user.id, drafts);
       onConfirm();
@@ -161,46 +181,87 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
             <div key={event.tempId} className="event-row">
               <div className="event-fields">
                 <div className="field-group">
-                  <label>Event Name</label>
+                  <label>Title</label>
                   <input
                     type="text"
-                    value={event.event_name}
-                    onChange={(e) => handleFieldChange(event.tempId, 'event_name', e.target.value)}
-                    placeholder="Enter event name"
+                    value={event.title}
+                    onChange={(e) => handleFieldChange(event.tempId, 'title', e.target.value)}
+                    placeholder="Enter event title"
                   />
                 </div>
-                <div className="field-group">
-                  <label>Date</label>
-                  <input
-                    type="date"
-                    value={event.event_date}
-                    onChange={(e) => handleFieldChange(event.tempId, 'event_date', e.target.value)}
-                  />
+                <div className="field-group checkbox">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={event.all_day}
+                      onChange={(e) => {
+                        handleFieldChange(event.tempId, 'all_day', e.target.checked);
+                        if (e.target.checked) {
+                          handleFieldChange(event.tempId, 'start_at', null);
+                          handleFieldChange(event.tempId, 'end_at', null);
+                        } else {
+                          const today = new Date().toISOString().split('T')[0];
+                          handleFieldChange(event.tempId, 'start_at', `${today}T09:00`);
+                          handleFieldChange(event.tempId, 'end_at', `${today}T10:00`);
+                        }
+                      }}
+                    />
+                    All Day
+                  </label>
                 </div>
+                {!event.all_day && (
+                  <>
+                    <div className="field-group">
+                      <label>Starts At</label>
+                      <input
+                        type="datetime-local"
+                        value={event.start_at || ''}
+                        onChange={(e) => handleFieldChange(event.tempId, 'start_at', e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label>Ends At</label>
+                      <input
+                        type="datetime-local"
+                        value={event.end_at || ''}
+                        onChange={(e) => handleFieldChange(event.tempId, 'end_at', e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="field-group">
-                  <label>Time (optional)</label>
-                  <input
-                    type="time"
-                    value={event.event_time || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'event_time', e.target.value || null)}
-                  />
-                </div>
-                <div className="field-group">
-                  <label>Tags (optional)</label>
+                  <label>Location</label>
                   <input
                     type="text"
-                    value={event.event_tag || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'event_tag', e.target.value || null)}
-                    placeholder="e.g., homework, quiz"
+                    value={event.location || ''}
+                    onChange={(e) => handleFieldChange(event.tempId, 'location', e.target.value || null)}
+                    placeholder="e.g., Online or LY 324"
                   />
                 </div>
                 <div className="field-group">
-                  <label>Label (optional)</label>
+                  <label>Tag</label>
                   <input
                     type="text"
-                    value={event.event_label || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'event_label', e.target.value || null)}
+                    value={event.tag || ''}
+                    onChange={(e) => handleFieldChange(event.tempId, 'tag', e.target.value || null)}
+                    placeholder="e.g., Class, Meeting"
+                  />
+                </div>
+                <div className="field-group">
+                  <label>Label</label>
+                  <input
+                    type="text"
+                    value={event.label || ''}
+                    onChange={(e) => handleFieldChange(event.tempId, 'label', e.target.value || null)}
                     placeholder="e.g., CS101, BIO-200"
+                  />
+                </div>
+                <div className="field-group">
+                  <label>Description</label>
+                  <textarea
+                    value={event.description || ''}
+                    onChange={(e) => handleFieldChange(event.tempId, 'description', e.target.value || null)}
+                    placeholder="Enter details"
                   />
                 </div>
               </div>
@@ -221,8 +282,8 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
               checked={applyLabelToAll}
               onChange={(e) => {
                 setApplyLabelToAll(e.target.checked);
-                if (e.target.checked && editableEvents[0]?.event_label) {
-                  setGlobalLabel(editableEvents[0].event_label);
+                if (e.target.checked && editableEvents[0]?.label) {
+                  setGlobalLabel(editableEvents[0].label);
                 }
               }}
             />
