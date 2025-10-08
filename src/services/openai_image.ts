@@ -112,41 +112,36 @@ Your main objectives:
 # Output Format
 Return ONLY a JSON array of event objects matching these fields.`
 
-const EVENT_ARRAY_SCHEMA = {
-  type: "array",
-  items: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      title: { type: "string" },
-      location: { type: ["string", "null"] },
-      all_day: { type: "boolean" },
-      start_date: { type: "string" },
-      start_time: { type: ["string", "null"] },
-      end_date: { type: ["string", "null"] },
-      end_time: { type: ["string", "null"] },
-      is_recurring: { type: ["boolean", "null"] },
-      recurrence_rule: { type: ["string", "null"] },
-      label: { type: ["string", "null"] },
-      tag: { type: ["string", "null"] },
-      description: { type: ["string", "null"] }
-    },
-    required: [
-      "title",
-      "location",
-      "all_day",
-      "start_date",
-      "start_time",
-      "end_date",
-      "end_time",
-      "is_recurring",
-      "recurrence_rule",
-      "label",
-      "tag",
-      "description"
-    ]
-  }
+const EVENT_OBJECT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    events: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          location: { type: ["string", "null"] },
+          all_day: { type: "boolean" },
+          start_date: { type: "string" },
+          start_time: { type: ["string", "null"] },
+          end_date: { type: ["string", "null"] },
+          end_time: { type: ["string", "null"] },
+          is_recurring: { type: ["boolean", "null"] },
+          recurrence_rule: { type: ["string", "null"] },
+          label: { type: ["string", "null"] },
+          tag: { type: ["string", "null"] },
+          description: { type: ["string", "null"] }
+        },
+        required: ["title","location","all_day","start_date","start_time","end_date","end_time","is_recurring","recurrence_rule","label","tag","description"]
+      }
+    }
+  },
+  required: ["events"]
 }
+
 
 async function robustJsonParse(s: string): Promise<any> {
   try {
