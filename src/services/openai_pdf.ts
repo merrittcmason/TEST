@@ -68,7 +68,7 @@ Analyze text across multiple pages and output valid JSON.
 6. If an event has no explicit time, set all_day=true and both times=null.
 7. If no recurrence is visible, set is_recurring=false and recurrence_rule=null.
 8. If recurring is implied, fill is_recurring=true and recurrence_rule like "DAILY", "WEEKLY", etc.
-9. If due/submit or assignment without time, default time=23:59.
+9. If event's that look like assignments or due dates and have no explicit times, set start_time = "11:00" and end_time = "11:59". Do not infer or create time ranges unless explicitly shown.
 10. Avoid duplicates. Normalize event names in title case.
 11. Return only valid JSON in the format below.
 
