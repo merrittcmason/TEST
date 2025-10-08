@@ -173,7 +173,20 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
             tag: { type: ["string", "null"] },
             description: { type: ["string", "null"] }
           },
-          required: ["title", "start_date"]
+          required: [
+            "title",
+            "location",
+            "all_day",
+            "start_date",
+            "start_time",
+            "end_date",
+            "end_time",
+            "is_recurring",
+            "recurrence_rule",
+            "label",
+            "tag",
+            "description"
+          ]
         }
       }
     },
