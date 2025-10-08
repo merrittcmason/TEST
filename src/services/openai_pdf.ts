@@ -50,11 +50,13 @@ const SYSTEM_TEXT = `You are an event extractor for schedules and syllabi. Retur
 
 const SCHEMA = {
   type: "object",
+  additionalProperties: false,
   properties: {
     events: {
       type: "array",
       items: {
         type: "object",
+        additionalProperties: false,
         properties: {
           event_name: { type: "string" },
           event_date: { type: "string" },
@@ -62,7 +64,7 @@ const SCHEMA = {
           event_tag: {
             type: ["string", "null"],
             enum: [
-              "Interview","Exam","Midterm","Quiz","Homework","Assignment","Class","Lecture","Lab","Meeting","Appointment","Holiday","Break","No_Class","School_Closed","Other",null
+              "Interview","Exam","Midterm","Quiz","Homework","Assignment","Class","Lecture","Lab","Meeting","Appointment","Holiday","Break","No_Class","School_Closed","Other"
             ]
           }
         },
