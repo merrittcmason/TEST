@@ -92,6 +92,7 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 async function callResponsesWithFileId(file_id: string, page_start: number, page_end: number) {
+  const instruction = `${SYSTEM_TEXT} Return only valid JSON matching the schema. Only consider pages ${page_start} to ${page_end}.`
   const body = {
     model: MODEL,
     temperature: 0,
@@ -99,8 +100,8 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
       {
         role: "user",
         content: [
-          { type: "input_text", text: SYSTEM_TEXT + " Return only valid JSON matching the schema." },
-          { type: "input_file", file_id, page_range: { start: page_start, end: page_end } }
+          { type: "input_text", text: instruction },
+          { type: "input_file", file_id }
         ]
       }
     ],
