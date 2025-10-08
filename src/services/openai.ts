@@ -12,11 +12,20 @@ import { DateTime } from "luxon"
 GlobalWorkerOptions.workerSrc = pdfWorker
 
 export interface ParsedEvent {
-  event_name: string
-  event_date: string
-  event_time: string | null
-  event_tag: string | null
+  title: string
+  location: string | null
+  all_day: boolean
+  start_date: string
+  start_time: string | null
+  end_date: string | null
+  end_time: string | null
+  is_recurring: boolean | null
+  recurrence_rule: string | null
+  label: string | null
+  tag: string | null
+  description: string | null
 }
+
 export interface ParseResult {
   events: ParsedEvent[]
   tokensUsed: number
@@ -38,21 +47,12 @@ function toTitleCase(s: string): string {
   return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
 }
 
-function capTag(t: string | null | undefined): string | null {
-  if (!t || typeof t !== "string") return null
-  const s = t.trim()
-  if (!s) return null
-  return s[0].toUpperCase() + s.slice(1).toLowerCase()
-}
-
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return (events || []).map(e => {
-    let name = (e.event_name || "").trim()
-    name = toTitleCase(name).replace(/\s{2,}/g, " ")
-    if (name.length > 60) name = name.slice(0, 57).trimEnd() + "..."
-    const event_time = typeof e.event_time === "string" && e.event_time.trim() === "" ? null : e.event_time
-    const event_tag = capTag(e.event_tag ?? null)
-    return { event_name: name, event_date: e.event_date, event_time, event_tag }
+    let title = (e.title || "").trim()
+    title = toTitleCase(title).replace(/\s{2,}/g, " ")
+    if (title.length > 80) title = title.slice(0, 77).trimEnd() + "..."
+    return { ...e, title }
   })
 }
 
@@ -60,7 +60,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>()
   const out: ParsedEvent[] = []
   for (const e of events) {
-    const key = `${(e.event_name || "").trim().toLowerCase()}|${e.event_date}|${e.event_time ?? ""}|${e.event_tag ?? ""}`
+    const key = `${(e.title || "").trim().toLowerCase()}|${e.start_date}|${e.start_time ?? ""}|${e.tag ?? ""}`
     if (!seen.has(key)) {
       seen.add(key)
       out.push(e)
@@ -69,48 +69,12 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out
 }
 
-function fmtTime(dt: Date): string {
-  const d = DateTime.fromJSDate(dt)
-  const hh = d.toFormat("HH")
-  const mm = d.toFormat("mm")
-  return `${hh}:${mm}`
-}
-
-function resolveRelativeNL(text: string): ParsedEvent[] {
-  const results = chrono.parse(text, new Date(), { forwardDate: true })
-  if (!results.length) return []
-  const events: ParsedEvent[] = []
-  for (const r of results) {
-    const d = r.start.date()
-    const date = DateTime.fromJSDate(d).toFormat("yyyy-LL-dd")
-    const hasHour = r.start.isCertain("hour")
-    const time = hasHour ? fmtTime(d) : null
-    let tag: string | null = null
-    const lc = text.toLowerCase()
-    if (/\binterview\b/.test(lc)) tag = "Interview"
-    else if (/\bexam\b|\bmidterm\b|\bfinal\b/.test(lc)) tag = "Exam"
-    else if (/\bquiz\b/.test(lc)) tag = "Quiz"
-    else if (/\bclass\b|\blecture\b|\blab\b/.test(lc)) tag = "Class"
-    else if (/\bmeeting\b/.test(lc)) tag = "Meeting"
-    else if (/\bappointment\b|\bdentist\b|\bdoctor\b/.test(lc)) tag = "Appointment"
-    let name = "Event"
-    if (/\btest\b|\bexam\b|\bmidterm\b|\bfinal\b/.test(lc)) name = "Test"
-    else if (/\bquiz\b/.test(lc)) name = "Quiz"
-    else if (/\binterview\b/.test(lc)) name = "Interview"
-    else if (/\bmeeting\b/.test(lc)) name = "Meeting"
-    else if (/\bclass\b/.test(lc)) name = "Class"
-    else if (/\bappointment\b/.test(lc)) name = "Appointment"
-    name = toTitleCase(name)
-    events.push({ event_name: name, event_date: date, event_time: time, event_tag: tag })
-  }
-  return events
-}
-
 async function preflightFileSize(file: File) {
   const name = (file.name || "").toLowerCase()
   const type = (file.type || "").toLowerCase()
   const size = file.size
   if (size > PREVIEW_LIMITS.anyMaxBytes) throw new Error("File too large")
+
   if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) {
     const data = await file.arrayBuffer()
     const wb = XLSX.read(data, { type: "array" })
@@ -128,22 +92,13 @@ async function preflightFileSize(file: File) {
     if (rows > PREVIEW_LIMITS.excelMaxTotalRows || cells > PREVIEW_LIMITS.excelMaxTotalCells) throw new Error("Spreadsheet too large")
   } else if (type.includes("word") || name.endsWith(".docx") || name.endsWith(".doc")) {
     const ab = await file.arrayBuffer()
-    let plain = ""
-    try {
-      const r1 = await mammoth.extractRawText({ arrayBuffer: ab } as any)
-      plain = r1?.value || ""
-    } catch {}
-    if (!plain) {
-      const r2 = await mammoth.convertToHtml({ arrayBuffer: ab } as any)
-      const html = r2?.value || ""
-      plain = html.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-    }
-    if (plain.length > PREVIEW_LIMITS.wordMaxChars) throw new Error("Document too long")
+    const text = await mammoth.extractRawText({ arrayBuffer: ab } as any).then(r => r?.value || "")
+    if (text.length > PREVIEW_LIMITS.wordMaxChars) throw new Error("Document too long")
   } else if (type.includes("pdf") || name.endsWith(".pdf")) {
     const data = new Uint8Array(await file.arrayBuffer())
     const pdf = await pdfjsLib.getDocument({ data }).promise
     if (pdf.numPages > PREVIEW_LIMITS.pdfMaxPages) throw new Error("PDF too long")
-  } else if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) {
+  } else if (type.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".csv")) {
     const text = await file.text()
     if (text.length > PREVIEW_LIMITS.textMaxChars) throw new Error("Text file too long")
   }
@@ -164,8 +119,7 @@ async function convertDocToPdfBrowser(file: File): Promise<File> {
     const instance = html2pdfMod.default ? html2pdfMod.default() : (html2pdfMod() as any)
     const blob: Blob = await instance.from(container).set({ margin: 10, filename: file.name.replace(/\.(docx?|DOCX?)$/, ".pdf") }).outputPdf("blob")
     document.body.removeChild(container)
-    const pdfFile = new File([blob], file.name.replace(/\.(docx?|DOCX?)$/, ".pdf"), { type: "application/pdf" })
-    return pdfFile
+    return new File([blob], file.name.replace(/\.(docx?|DOCX?)$/, ".pdf"), { type: "application/pdf" })
   } catch {
     return file
   }
@@ -176,6 +130,7 @@ export class OpenAIFilesService {
     await preflightFileSize(file)
     const name = (file.name || "").toLowerCase()
     const type = (file.type || "").toLowerCase()
+
     if (type.startsWith("image/")) return await OpenAIImageService.parse(file)
     if (type.includes("pdf") || name.endsWith(".pdf")) return await OpenAIPdfService.parse(file)
     if (type.includes("excel") || name.endsWith(".xlsx") || name.endsWith(".xls")) return await OpenAIExcelService.parse(file)
@@ -183,7 +138,7 @@ export class OpenAIFilesService {
       const pdf = await convertDocToPdfBrowser(file)
       return await OpenAIPdfService.parse(pdf)
     }
-    if (name.endsWith(".csv") || type.includes("csv") || type.startsWith("text/") || name.endsWith(".txt")) {
+    if (type.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".csv")) {
       const excelSvc = await import("./openai_excel")
       return await (excelSvc.OpenAIExcelService || excelSvc.default).parse(file)
     }
@@ -191,67 +146,77 @@ export class OpenAIFilesService {
   }
 }
 
-const TEXT_SCHEMA = {
-  type: "object",
-  properties: {
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          event_name: { type: "string" },
-          event_date: { type: ["string", "null"] },
-          event_time: { type: ["string", "null"] },
-          event_tag: { type: ["string", "null"] }
-        },
-        required: ["event_name", "event_date", "event_time", "event_tag"]
-      }
-    }
-  },
-  required: ["events"]
-}
-
 export class OpenAITextService {
-  static async parseNaturalLanguage(text: string): Promise<ParseResult> {
+  static async parseNaturalLanguage(text: string, yearContext?: number, notes?: string): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
-    const deterministic = resolveRelativeNL(text)
-    if (deterministic.length) {
-      const events = dedupeEvents(postNormalizeEvents(deterministic))
-      events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
-      return { events, tokensUsed: 0 }
-    }
+
+    const systemPrompt = `Given a user-uploaded document or image (such as a calendar, class schedule, assignment list, or event summary), extract individual events and produce a structured list with complete event details. These sources may be malformed, messy, or inconsistent, so carefully normalize, repair, and interpret the content to maximize accurate event extraction.
+
+Your main objectives:
+- Parse and reconstruct as many accurate, individual calendar events as possible, even from malformed or visually challenging data, by using robust inference and context clues.
+- For each event, fill in the following fields: title, location, all_day, start_date, start_time, end_date, end_time, is_recurring, recurrence_rule, label, tag, and description. If the information is missing or ambiguous, set the field to \`null\` or an empty string where appropriate.
+- If the input is a student schedule of assignments that lacks explicit times, assume assignments are due at 23:59 (11:59 PM).
+- Split compound entries (e.g., a single row for "Practice problems-sections 1.6, 1.7 & Lab-Algebra review") into multiple separate events—one for each distinct activity or section.
+- Carefully generate event titles based on input (e.g., “Interview with Google”, “Practice Problems Section 1.6”) and infer logical tags (e.g., “Lab”, “Quiz”, “Exam”) and labels (e.g., course or company names) as specified below.
+
+# Event Field Definitions
+(title, location, all_day, start_date, start_time, end_date, end_time, is_recurring, recurrence_rule, label, tag, description)
+
+# Output Format
+Return ONLY a JSON array of event objects matching these fields.`
+
     const body = {
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       temperature: 0,
-      seed: 7,
-      input: [
+      reasoning: { effort: "medium" },
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt
+        },
         {
           role: "user",
-          content: [
-            { type: "input_text", text: "Extract only events explicitly present in the text. Preserve decimals in titles. Dates must be YYYY-MM-DD; times HH:MM 24h or null. Do not infer missing data. Return JSON only matching the schema." },
-            { type: "input_text", text }
-          ]
+          content: JSON.stringify({
+            input_source: text,
+            year_context: yearContext ?? new Date().getFullYear(),
+            notes: notes ?? ""
+          })
         }
       ],
-      text: { format: { type: "json_schema", schema: TEXT_SCHEMA, strict: true } }
+      response_format: { type: "json" }
     }
-    const r = await fetch("https://api.openai.com/v1/responses", {
+
+    const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify(body)
     })
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}))
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
       throw new Error(err?.error?.message || "OpenAI API request failed")
     }
-    const data = await r.json()
-    const content = data?.output?.[0]?.content?.[0]?.text ?? "{\"events\":[]}"
+
+    const data = await res.json()
+    const content = data?.output?.[0]?.content?.[0]?.text ?? "[]"
     const tokensUsed = data?.usage?.total_tokens || 0
-    const parsed = JSON.parse(content)
-    let events: ParsedEvent[] = (parsed.events || []) as ParsedEvent[]
+    let events: ParsedEvent[] = []
+
+    try {
+      events = JSON.parse(content)
+    } catch {
+      events = []
+    }
+
     events = postNormalizeEvents(events)
     events = dedupeEvents(events)
-    events.sort((a, b) => a.event_date.localeCompare(b.event_date) || ((a.event_time || "23:59").localeCompare(b.event_time || "23:59")) || a.event_name.localeCompare(b.event_name))
+    events.sort(
+      (a, b) =>
+        a.start_date.localeCompare(b.start_date) ||
+        ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
+        a.title.localeCompare(b.title)
+    )
+
     return { events, tokensUsed }
   }
 }
