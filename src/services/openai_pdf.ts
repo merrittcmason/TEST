@@ -24,7 +24,12 @@ export interface ParseResult {
 }
 
 function toTitleCase(s: string): string {
-  return (s || "").trim().replace(/\s+/g, " ").split(" ").map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(" ")
+  return (s || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ")
 }
 
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
@@ -64,6 +69,42 @@ Your main objectives:
 # Output Format
 Return ONLY a JSON array of event objects matching these fields.`
 
+const EVENT_ARRAY_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      title: { type: "string" },
+      location: { type: ["string", "null"] },
+      all_day: { type: "boolean" },
+      start_date: { type: "string" },
+      start_time: { type: ["string", "null"] },
+      end_date: { type: ["string", "null"] },
+      end_time: { type: ["string", "null"] },
+      is_recurring: { type: ["boolean", "null"] },
+      recurrence_rule: { type: ["string", "null"] },
+      label: { type: ["string", "null"] },
+      tag: { type: ["string", "null"] },
+      description: { type: ["string", "null"] }
+    },
+    required: [
+      "title",
+      "location",
+      "all_day",
+      "start_date",
+      "start_time",
+      "end_date",
+      "end_time",
+      "is_recurring",
+      "recurrence_rule",
+      "label",
+      "tag",
+      "description"
+    ]
+  }
+}
+
 async function uploadFile(file: File): Promise<string> {
   if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
   const form = new FormData()
@@ -88,23 +129,27 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
     temperature: 0,
     reasoning: { effort: "medium" },
     input: [
-      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "system",
+        content: [{ type: "input_text", text: SYSTEM_PROMPT }]
+      },
       {
         role: "user",
         content: [
-          {
-            type: "input_text",
-            text: `Extract events explicitly found between pages ${page_start} and ${page_end}.`
-          },
-          {
-            type: "input_file",
-            file_id
-          }
+          { type: "input_text", text: `Extract events explicitly found between pages ${page_start} and ${page_end}.` },
+          { type: "input_file", file_id }
         ]
       }
     ],
-    text: { format: { type: "json_schema" } },
-
+    text: {
+      format: {
+        type: "json_schema",
+        name: "calendar_events",
+        schema: EVENT_ARRAY_SCHEMA,
+        strict: true
+      }
+    },
+    max_output_tokens: 1800
   }
 
   const r = await fetch("https://api.openai.com/v1/responses", {
@@ -121,8 +166,8 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
   const j = await r.json()
   const text = j?.output?.[0]?.content?.[0]?.text ?? "[]"
   const tokensUsed = j?.usage?.total_tokens ?? 0
-  let parsed: ParsedEvent[] = []
 
+  let parsed: ParsedEvent[] = []
   try {
     parsed = JSON.parse(text)
   } catch {
