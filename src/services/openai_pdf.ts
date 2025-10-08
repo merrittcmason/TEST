@@ -95,7 +95,6 @@ async function callResponsesWithFileId(file_id: string, page_start: number, page
   const body = {
     model: MODEL,
     temperature: 0,
-    seed: 7,
     input: [
       {
         role: "user",
