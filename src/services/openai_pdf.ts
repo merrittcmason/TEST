@@ -55,6 +55,34 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out
 }
 
+function normTitle(s: string): string {
+  let t = (s || "").replace(/\s{2,}/g, " ").trim()
+  if (t.length > 80) t = t.slice(0, 77).trimEnd() + "..."
+  return toTitleCase(t)
+}
+
+function splitCompoundEventsForTokens(events: ParsedEvent[]): ParsedEvent[] {
+  const activityHead = /(Lab\b.*|Quiz\b.*|Test\b.*|Exam\b.*|Discussion Board\b.*)/i
+  const out: ParsedEvent[] = []
+  for (const e of events) {
+    const t = (e.title || "").replace(/–|—/g, "-").replace(/\s{2,}/g, " ").trim()
+    const m = t.match(/^(.*?sections?\s+)([0-9.\s,]+)\s*(?:&|and)\s*(.+)$/i)
+    if (m) {
+      const base = m[1]
+      const nums = m[2].split(",").map(s => s.trim()).filter(Boolean).join(", ")
+      const tail = m[3].trim()
+      if (activityHead.test(tail)) {
+        const e1: ParsedEvent = { ...e, title: normTitle(`${base}${nums}`) }
+        const e2: ParsedEvent = { ...e, title: normTitle(tail) }
+        out.push(e1, e2)
+        continue
+      }
+    }
+    out.push({ ...e, title: normTitle(e.title) })
+  }
+  return out
+}
+
 const SYSTEM_PROMPT = `You are an AI calendar event extractor for PDFs such as syllabi, class schedules, and event lists.
 Analyze text across multiple pages and output valid JSON.
 
@@ -234,15 +262,15 @@ export class OpenAIPdfService {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
     const file_id = await uploadFile(file)
     const { parsed, tokensUsed } = await callResponsesWithFileId(file_id, PAGE_START, PAGE_END)
-
-    const events = postNormalizeEvents(dedupeEvents(parsed?.events || []))
+    let events: ParsedEvent[] = parsed?.events || []
+    events = splitCompoundEventsForTokens(events)
+    events = postNormalizeEvents(dedupeEvents(events))
     events.sort(
       (a, b) =>
         a.start_date.localeCompare(b.start_date) ||
         ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
         a.title.localeCompare(b.title)
     )
-
     return { events, tokensUsed }
   }
 }
