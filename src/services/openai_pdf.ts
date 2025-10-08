@@ -151,11 +151,14 @@ async function robustJsonParse(s: string): Promise<any> {
 async function callResponsesWithFileId(file_id: string, page_start: number, page_end: number) {
   const schema = {
     type: "object",
+    additionalProperties: false,
     properties: {
       events: {
         type: "array",
+        additionalProperties: false,
         items: {
           type: "object",
+          additionalProperties: false,
           properties: {
             title: { type: "string" },
             location: { type: ["string", "null"] },
