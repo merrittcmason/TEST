@@ -149,7 +149,7 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userParts }
       ],
-      response_format: { type: "json" },
+      text: {format { type: "json" }},
       max_output_tokens: MAX_TOKENS
     })
   })
