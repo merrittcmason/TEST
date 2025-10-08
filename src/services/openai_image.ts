@@ -169,7 +169,6 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
     body: JSON.stringify({
       model: MODEL,
-      reasoning: { effort: "medium" },
       temperature: 0,
       input: [
         { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
