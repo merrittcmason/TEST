@@ -2,7 +2,7 @@ const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const MODEL = "gpt-4o"
 const PAGE_START = 1
 const PAGE_END = 12
-const MAX_TOKENS = 1200
+const MAX_TOKENS = 5000
 
 export interface ParsedEvent {
   title: string
