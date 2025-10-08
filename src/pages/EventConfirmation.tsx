@@ -1,180 +1,175 @@
-import { useState, useEffect } from 'react';
-import { DatabaseService } from '../services/database';
-import { useAuth } from '../contexts/AuthContext';
-import { useMode, MODE_CONFIG } from '../contexts/ModeContext';
-import './EventConfirmation.css';
+import { useState, useEffect } from 'react'
+import { DatabaseService } from '../services/database'
+import { useAuth } from '../contexts/AuthContext'
+import { useMode } from '../contexts/ModeContext'
+import './EventConfirmation.css'
 
 interface EventConfirmationProps {
-  events: any[];
-  onConfirm: () => void;
-  onCancel: () => void;
+  events: any[]
+  onConfirm: () => void
+  onCancel: () => void
 }
 
 interface EditableEvent {
-  tempId: string;
-  title: string;
-  all_day: boolean;
-  is_recurring: boolean;
-  recurrence_rule: string | null;
-  tag: string | null;
-  label: string | null;
-  start_at: string | null;
-  end_at: string | null;
-  location: string | null;
-  description: string | null;
-}
-
-function toUTC(dateTime: string) {
-  if (!dateTime) return null;
-  const local = new Date(dateTime);
-  const utc = new Date(local.toLocaleString('en-US', { timeZone: 'UTC' }));
-  return utc.toISOString();
+  tempId: string
+  title: string
+  location: string | null
+  all_day: boolean
+  start_date: string | null
+  start_time: string | null
+  end_date: string | null
+  end_time: string | null
+  is_recurring: boolean
+  recurrence_rule: string | null
+  label: string | null
+  tag: string | null
+  description: string | null
 }
 
 export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirmationProps) {
-  const { user } = useAuth();
-  const { mode } = useMode();
+  const { user } = useAuth()
+  const { mode } = useMode()
   const [editableEvents, setEditableEvents] = useState<EditableEvent[]>(
     events.map((e, i) => ({
       tempId: `temp-${i}`,
       title: e.title || '',
+      location: e.location || '',
       all_day: e.all_day || false,
+      start_date: e.start_date || new Date().toISOString().split('T')[0],
+      start_time: e.start_time || '09:00',
+      end_date: e.end_date || new Date().toISOString().split('T')[0],
+      end_time: e.end_time || '10:00',
       is_recurring: e.is_recurring || false,
-      recurrence_rule: e.recurrence_rule || null,
-      tag: e.tag || null,
-      label: e.label || null,
-      start_at: e.start_at || '',
-      end_at: e.end_at || '',
-      location: e.location || null,
-      description: e.description || null
+      recurrence_rule: e.recurrence_rule || '',
+      label: e.label || '',
+      tag: e.tag || '',
+      description: e.description || ''
     }))
-  );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [applyLabelToAll, setApplyLabelToAll] = useState(false);
-  const [globalLabel, setGlobalLabel] = useState('');
+  )
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [applyLabelToAll, setApplyLabelToAll] = useState(false)
+  const [globalLabel, setGlobalLabel] = useState('')
 
   useEffect(() => {
     if (applyLabelToAll && globalLabel) {
-      setEditableEvents(prev => prev.map(e => ({ ...e, label: globalLabel })));
+      setEditableEvents(prev => prev.map(e => ({ ...e, label: globalLabel })))
     }
-  }, [applyLabelToAll, globalLabel]);
+  }, [applyLabelToAll, globalLabel])
 
   const handleFieldChange = (tempId: string, field: keyof EditableEvent, value: any) => {
     setEditableEvents(prev =>
       prev.map(e => (e.tempId === tempId ? { ...e, [field]: value } : e))
-    );
+    )
     if (field === 'label' && applyLabelToAll) {
-      setGlobalLabel(value || '');
+      setGlobalLabel(value || '')
     }
-  };
+  }
 
   const handleAddEvent = () => {
+    const today = new Date().toISOString().split('T')[0]
     const newEvent: EditableEvent = {
       tempId: `temp-${Date.now()}`,
       title: '',
+      location: '',
       all_day: false,
+      start_date: today,
+      start_time: '09:00',
+      end_date: today,
+      end_time: '10:00',
       is_recurring: false,
-      recurrence_rule: null,
-      tag: null,
-      label: applyLabelToAll ? globalLabel : null,
-      start_at: new Date().toISOString().split('T')[0] + 'T09:00',
-      end_at: new Date().toISOString().split('T')[0] + 'T10:00',
-      location: null,
-      description: null
-    };
-    setEditableEvents(prev => [...prev, newEvent]);
-  };
+      recurrence_rule: '',
+      label: '',
+      tag: '',
+      description: ''
+    }
+    setEditableEvents(prev => [...prev, newEvent])
+  }
 
   const handleRemoveEvent = (tempId: string) => {
-    setEditableEvents(prev => prev.filter(e => e.tempId !== tempId));
-  };
+    setEditableEvents(prev => prev.filter(e => e.tempId !== tempId))
+  }
 
   const validateEvents = () => {
-    for (const event of editableEvents) {
-      if (!event.title.trim()) throw new Error('All events must have a title');
-      if (!event.all_day && (!event.start_at || !event.end_at)) throw new Error('All timed events must have start and end times');
+    for (const e of editableEvents) {
+      if (!e.title.trim()) throw new Error('Each event must have a title')
+      if (!e.start_date || !e.end_date) throw new Error('Each event must have start and end dates')
     }
-  };
+  }
 
   const handleConfirm = async () => {
-    if (!user) {
-      setError('Not authenticated');
-      return;
-    }
-    setError('');
-    setLoading(true);
+    if (!user) return setError('Not authenticated')
+    setError('')
+    setLoading(true)
     try {
-      validateEvents();
+      validateEvents()
       const rows = editableEvents.map(e => ({
         user_id: user.id,
         title: e.title,
         all_day: e.all_day,
         is_recurring: e.is_recurring,
         recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
-        tag: e.tag,
-        label: e.label,
-        start_at: e.all_day ? null : toUTC(e.start_at!),
-        end_at: e.all_day ? null : toUTC(e.end_at!),
+        start_date: e.start_date,
+        start_time: e.all_day ? null : e.start_time,
+        end_date: e.end_date,
+        end_time: e.all_day ? null : e.end_time,
         tzid: 'UTC',
         location: e.location,
-        description: e.description
-      }));
-      await DatabaseService.createEvents(rows);
-      await DatabaseService.clearDraftEvents(user.id);
-      onConfirm();
+        description: e.description,
+        tag: e.tag,
+        label: e.label
+      }))
+      await DatabaseService.createEvents(rows)
+      await DatabaseService.clearDraftEvents(user.id)
+      onConfirm()
     } catch (err: any) {
-      setError(err.message || 'Failed to save events');
+      setError(err.message || 'Failed to save events')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleSaveForLater = async () => {
-    if (!user) {
-      setError('Not authenticated');
-      return;
-    }
-    setError('');
-    setLoading(true);
+    if (!user) return setError('Not authenticated')
+    setError('')
+    setLoading(true)
     try {
-      validateEvents();
+      validateEvents()
       const drafts = editableEvents.map(e => ({
         user_id: user.id,
         title: e.title,
         all_day: e.all_day,
         is_recurring: e.is_recurring,
         recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
-        tag: e.tag,
-        label: e.label,
-        start_at: e.all_day ? null : toUTC(e.start_at!),
-        end_at: e.all_day ? null : toUTC(e.end_at!),
+        start_date: e.start_date,
+        start_time: e.all_day ? null : e.start_time,
+        end_date: e.end_date,
+        end_time: e.all_day ? null : e.end_time,
         tzid: 'UTC',
         location: e.location,
-        description: e.description
-      }));
-      await DatabaseService.replaceDraftEvents(user.id, drafts);
-      onConfirm();
+        description: e.description,
+        tag: e.tag,
+        label: e.label
+      }))
+      await DatabaseService.replaceDraftEvents(user.id, drafts)
+      onConfirm()
     } catch (err: any) {
-      setError(err.message || 'Failed to save drafts');
+      setError(err.message || 'Failed to save drafts')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleCancelDiscard = async () => {
-    if (!user) {
-      onCancel();
-      return;
-    }
-    setLoading(true);
+    if (!user) return onCancel()
+    setLoading(true)
     try {
-      await DatabaseService.clearDraftEvents(user.id);
+      await DatabaseService.clearDraftEvents(user.id)
     } finally {
-      setLoading(false);
-      onCancel();
+      setLoading(false)
+      onCancel()
     }
-  };
+  }
 
   return (
     <div className="event-confirmation-page">
@@ -183,123 +178,144 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
           <h1>Confirm Events</h1>
           <p>Review and edit the extracted events before publishing</p>
         </header>
+
         <div className="events-list">
           {editableEvents.map(event => (
-            <div key={event.tempId} className="event-row">
-              <div className="event-fields">
-                <div className="field-group">
-                  <label>Title</label>
+            <div key={event.tempId} className="event-card">
+              <div className="field-group full">
+                <label>Title</label>
+                <input
+                  type="text"
+                  value={event.title}
+                  onChange={e => handleFieldChange(event.tempId, 'title', e.target.value)}
+                  placeholder="Enter event title"
+                />
+              </div>
+
+              <div className="field-group full">
+                <label>Location</label>
+                <input
+                  type="text"
+                  value={event.location || ''}
+                  onChange={e => handleFieldChange(event.tempId, 'location', e.target.value)}
+                  placeholder="e.g., Online or LY 324"
+                />
+              </div>
+
+              <div className="slider-group">
+                <label>All Day</label>
+                <label className="switch">
                   <input
-                    type="text"
-                    value={event.title}
-                    onChange={(e) => handleFieldChange(event.tempId, 'title', e.target.value)}
-                    placeholder="Enter event title"
+                    type="checkbox"
+                    checked={event.all_day}
+                    onChange={e => handleFieldChange(event.tempId, 'all_day', e.target.checked)}
                   />
-                </div>
-                <div className="field-group checkbox">
-                  <label>
+                  <span className="slider"></span>
+                </label>
+              </div>
+
+              <div className="field-group full">
+                <label>Starts At</label>
+                <div className="split-fields">
+                  <input
+                    type="date"
+                    value={event.start_date || ''}
+                    onChange={e => handleFieldChange(event.tempId, 'start_date', e.target.value)}
+                  />
+                  {!event.all_day && (
                     <input
-                      type="checkbox"
-                      checked={event.all_day}
-                      onChange={(e) => {
-                        handleFieldChange(event.tempId, 'all_day', e.target.checked);
-                        if (e.target.checked) {
-                          handleFieldChange(event.tempId, 'start_at', null);
-                          handleFieldChange(event.tempId, 'end_at', null);
-                        } else {
-                          const today = new Date().toISOString().split('T')[0];
-                          handleFieldChange(event.tempId, 'start_at', `${today}T09:00`);
-                          handleFieldChange(event.tempId, 'end_at', `${today}T10:00`);
-                        }
-                      }}
+                      type="time"
+                      value={event.start_time || ''}
+                      onChange={e => handleFieldChange(event.tempId, 'start_time', e.target.value)}
                     />
-                    All Day
-                  </label>
-                </div>
-                <div className="field-group checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={event.is_recurring}
-                      onChange={(e) => {
-                        handleFieldChange(event.tempId, 'is_recurring', e.target.checked);
-                        if (!e.target.checked) handleFieldChange(event.tempId, 'recurrence_rule', null);
-                      }}
-                    />
-                    Recurring Event
-                  </label>
-                </div>
-                {event.is_recurring && (
-                  <div className="field-group">
-                    <label>Repeat</label>
-                    <select
-                      value={event.recurrence_rule || ''}
-                      onChange={(e) => handleFieldChange(event.tempId, 'recurrence_rule', e.target.value)}
-                    >
-                      <option value="">Select frequency</option>
-                      <option value="FREQ=DAILY">Daily</option>
-                      <option value="FREQ=WEEKLY">Weekly</option>
-                      <option value="FREQ=MONTHLY">Monthly</option>
-                      <option value="FREQ=YEARLY">Yearly</option>
-                    </select>
-                  </div>
-                )}
-                {!event.all_day && (
-                  <>
-                    <div className="field-group">
-                      <label>Starts At</label>
-                      <input
-                        type="datetime-local"
-                        value={event.start_at || ''}
-                        onChange={(e) => handleFieldChange(event.tempId, 'start_at', e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label>Ends At</label>
-                      <input
-                        type="datetime-local"
-                        value={event.end_at || ''}
-                        onChange={(e) => handleFieldChange(event.tempId, 'end_at', e.target.value)}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="field-group">
-                  <label>Location</label>
-                  <input
-                    type="text"
-                    value={event.location || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'location', e.target.value || null)}
-                    placeholder="e.g., Online or LY 324"
-                  />
-                </div>
-                <div className="field-group">
-                  <label>Tag</label>
-                  <input
-                    type="text"
-                    value={event.tag || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'tag', e.target.value || null)}
-                    placeholder="e.g., Class, Meeting"
-                  />
-                </div>
-                <div className="field-group">
-                  <label>Label</label>
-                  <input
-                    type="text"
-                    value={event.label || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'label', e.target.value || null)}
-                    placeholder="e.g., CS101, BIO-200"
-                  />
-                </div>
-                <div className="field-group">
-                  <label>Description</label>
-                  <textarea
-                    value={event.description || ''}
-                    onChange={(e) => handleFieldChange(event.tempId, 'description', e.target.value || null)}
-                    placeholder="Enter details"
-                  />
+                  )}
                 </div>
               </div>
+
+              <div className="field-group full">
+                <label>Ends At</label>
+                <div className="split-fields">
+                  <input
+                    type="date"
+                    value={event.end_date || ''}
+                    onChange={e => handleFieldChange(event.tempId, 'end_date', e.target.value)}
+                  />
+                  {!event.all_day && (
+                    <input
+                      type="time"
+                      value={event.end_time || ''}
+                      onChange={e => handleFieldChange(event.tempId, 'end_time', e.target.value)}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="field-group full">
+                <label>Recurring?</label>
+                <select
+                  value={event.recurrence_rule || ''}
+                  onChange={e => {
+                    const val = e.target.value
+                    handleFieldChange(event.tempId, 'is_recurring', val !== '')
+                    handleFieldChange(event.tempId, 'recurrence_rule', val)
+                  }}
+                >
+                  <option value="">Doesn't Reoccur</option>
+                  <option value="FREQ=DAILY">Reoccurs Daily</option>
+                  <option value="FREQ=WEEKLY">Reoccurs Weekly</option>
+                  <option value="FREQ=BIWEEKLY">Reoccurs Every 2 Weeks</option>
+                  <option value="FREQ=MONTHLY">Reoccurs Monthly</option>
+                  <option value="FREQ=YEARLY">Reoccurs Annually</option>
+                  <option value="CUSTOM">Custom...</option>
+                </select>
+                {event.recurrence_rule === 'CUSTOM' && (
+                  <div className="custom-recurrence-placeholder">
+                    Custom recurrence options coming soon.
+                  </div>
+                )}
+              </div>
+
+              <div className="slider-group">
+                <label>Apply Label to All</label>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={applyLabelToAll}
+                    onChange={e => setApplyLabelToAll(e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+              </div>
+
+              <div className="field-group full">
+                <label>Label</label>
+                <input
+                  type="text"
+                  value={event.label || ''}
+                  onChange={e => handleFieldChange(event.tempId, 'label', e.target.value)}
+                  placeholder="e.g., CS101, BIO-200"
+                />
+              </div>
+
+              <div className="field-group full">
+                <label>Tag</label>
+                <input
+                  type="text"
+                  value={event.tag || ''}
+                  onChange={e => handleFieldChange(event.tempId, 'tag', e.target.value)}
+                  placeholder="e.g., Class, Meeting"
+                />
+              </div>
+
+              <div className="field-group full">
+                <label>Description</label>
+                <textarea
+                  value={event.description || ''}
+                  onChange={e => handleFieldChange(event.tempId, 'description', e.target.value)}
+                  placeholder="Enter details"
+                />
+              </div>
+
               <button
                 onClick={() => handleRemoveEvent(event.tempId)}
                 className="btn btn-danger remove-btn"
@@ -310,25 +326,13 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
             </div>
           ))}
         </div>
-        <div className="label-options">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={applyLabelToAll}
-              onChange={(e) => {
-                setApplyLabelToAll(e.target.checked);
-                if (e.target.checked && editableEvents[0]?.label) {
-                  setGlobalLabel(editableEvents[0].label);
-                }
-              }}
-            />
-            <span>Apply Label to All Events</span>
-          </label>
-        </div>
+
+        {error && <div className="confirmation-error">{error}</div>}
+
         <button onClick={handleAddEvent} className="btn btn-secondary add-event-btn" disabled={loading}>
           + Add Another Event
         </button>
-        {error && <div className="confirmation-error">{error}</div>}
+
         <div className="confirmation-actions">
           <button onClick={handleCancelDiscard} className="btn btn-secondary" disabled={loading}>
             Cancel
@@ -346,5 +350,5 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
         </div>
       </div>
     </div>
-  );
+  )
 }
