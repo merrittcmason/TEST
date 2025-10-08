@@ -23,7 +23,18 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
   const [dayEvents, setDayEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', date: '', time: '', tag: '', all_day: false });
+  const [editForm, setEditForm] = useState({
+    title: '',
+    start_date: '',
+    start_time: '',
+    end_date: '',
+    end_time: '',
+    all_day: false,
+    location: '',
+    label: '',
+    tag: '',
+    description: ''
+  });
   const [saving, setSaving] = useState(false);
   const [showSelector, setShowSelector] = useState(false);
   const selectorRef = useRef<HTMLDivElement | null>(null);
@@ -34,14 +45,10 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
       try {
         const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
         const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
-        const loadedEvents = await DatabaseService.getEvents(user.id, start, end);
-        const uniqueTags = Array.from(new Set(loadedEvents.map(e => (e.tag || '').trim()).filter((t): t is string => !!t))).sort((a, b) => a.localeCompare(b));
+        const loaded = await DatabaseService.getEvents(user.id, start, end);
+        const uniqueTags = Array.from(new Set(loaded.map((e: Event) => (e.tag || '').trim()).filter((t: string): t is string => !!t))).sort((a: string, b: string) => a.localeCompare(b));
         setAvailableTags(uniqueTags);
-        if (selectedTag) {
-          setEvents(loadedEvents.filter(e => (e.tag || '').trim() === selectedTag));
-        } else {
-          setEvents(loadedEvents);
-        }
+        setEvents(selectedTag ? loaded.filter((e: Event) => (e.tag || '').trim() === selectedTag) : loaded);
       } catch {}
     };
     loadEvents();
@@ -49,20 +56,20 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
 
   useEffect(() => {
     if (!user || !showDayDetail) return;
-    const loadDayEvents = async () => {
+    const loadDay = async () => {
       try {
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        const evts = await DatabaseService.getEvents(user.id, dateStr, dateStr);
+        const evts: Event[] = await DatabaseService.getEvents(user.id, dateStr, dateStr);
         const sorted = evts.sort((a, b) => {
           if (a.all_day && !b.all_day) return 1;
           if (!a.all_day && b.all_day) return -1;
-          if (!a.time || !b.time) return 0;
-          return a.time.localeCompare(b.time);
+          if (!a.start_time || !b.start_time) return 0;
+          return a.start_time.localeCompare(b.start_time);
         });
         setDayEvents(sorted);
       } catch {}
     };
-    loadDayEvents();
+    loadDay();
   }, [user, selectedDate, showDayDetail]);
 
   useEffect(() => {
@@ -86,8 +93,19 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
 
   const getEventsForDate = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return events.filter(event => event.date === dateStr);
+    return events.filter(event => event.start_date === dateStr || event.end_date === dateStr);
   };
+
+  const timeRange = (e: Event) => {
+    if (e.all_day) return 'All day';
+    if (e.start_time && e.end_time) {
+      const s = format(new Date(`2000-01-01T${e.start_time}`), 'h:mm a');
+      const en = format(new Date(`2000-01-01T${e.end_time}`), 'h:mm a');
+      return `${s} – ${en}`;
+    }
+    if (e.start_time) return format(new Date(`2000-01-01T${e.start_time}`), 'h:mm a');
+    return '';
+    };
 
   const handlePrevMonth = () => {
     const y = currentMonth.getFullYear();
@@ -113,11 +131,16 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
   const handleEditEvent = (event: Event) => {
     setEditingEvent(event);
     setEditForm({
-      name: event.name,
-      date: event.date,
-      time: event.time || '',
-      tag: event.tag || '',
+      title: event.title || '',
+      start_date: event.start_date || '',
+      start_time: event.start_time || '',
+      end_date: event.end_date || '',
+      end_time: event.end_time || '',
       all_day: event.all_day || false,
+      location: event.location || '',
+      label: event.label || '',
+      tag: event.tag || '',
+      description: event.description || ''
     });
   };
 
@@ -126,21 +149,26 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
     setSaving(true);
     try {
       await DatabaseService.updateEvent(editingEvent.id, {
-        name: editForm.name,
-        date: editForm.date,
-        time: editForm.time || null,
-        tag: editForm.tag || null,
+        title: editForm.title,
+        start_date: editForm.start_date,
+        start_time: editForm.all_day ? null : editForm.start_time || null,
+        end_date: editForm.end_date,
+        end_time: editForm.all_day ? null : editForm.end_time || null,
         all_day: editForm.all_day,
+        location: editForm.location || null,
+        label: editForm.label || null,
+        tag: editForm.tag || null,
+        description: editForm.description || null
       });
       setEditingEvent(null);
       if (showDayDetail) {
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        const evts = await DatabaseService.getEvents(user!.id, dateStr, dateStr);
+        const evts: Event[] = await DatabaseService.getEvents(user!.id, dateStr, dateStr);
         const sorted = evts.sort((a, b) => {
           if (a.all_day && !b.all_day) return 1;
           if (!a.all_day && b.all_day) return -1;
-          if (!a.time || !b.time) return 0;
-          return a.time.localeCompare(b.time);
+          if (!a.start_time || !b.start_time) return 0;
+          return a.start_time.localeCompare(b.start_time);
         });
         setDayEvents(sorted);
       }
@@ -153,19 +181,19 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
 
   const handleDeleteEvent = async () => {
     if (!editingEvent) return;
-    if (!confirm('Are you sure you want to delete this event?')) return;
+    if (!confirm('Delete this event?')) return;
     setSaving(true);
     try {
       await DatabaseService.deleteEvent(editingEvent.id);
       setEditingEvent(null);
       if (showDayDetail) {
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        const evts = await DatabaseService.getEvents(user!.id, dateStr, dateStr);
+        const evts: Event[] = await DatabaseService.getEvents(user!.id, dateStr, dateStr);
         const sorted = evts.sort((a, b) => {
           if (a.all_day && !b.all_day) return 1;
           if (!a.all_day && b.all_day) return -1;
-          if (!a.time || !b.time) return 0;
-          return a.time.localeCompare(b.time);
+          if (!a.start_time || !b.start_time) return 0;
+          return a.start_time.localeCompare(b.start_time);
         });
         setDayEvents(sorted);
       }
@@ -291,7 +319,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                           onEventClick(event);
                         }}
                       >
-                        {event.name}
+                        {event.title}
                       </div>
                     ))}
                     {dayEventsForDate.length > 3 && (
@@ -325,12 +353,15 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                 dayEvents.map(event => (
                   <div key={event.id} className="day-event-card">
                     <div className="event-card-info">
-                      <div className="event-card-time">
-                        {event.time ? format(new Date(`2000-01-01T${event.time}`), 'h:mm a') : 'All day'}
-                      </div>
+                      <div className="event-card-time">{timeRange(event)}</div>
                       <div className="event-card-details">
-                        <div className="event-card-name">{event.name}</div>
-                        {event.tag && <div className="event-card-tag">{event.tag}</div>}
+                        <div className="event-card-name">{event.title}</div>
+                        <div className="event-card-sub">
+                          {event.location && <span className="event-card-location">{event.location}</span>}
+                          {event.label && <span className="event-card-label">{event.label}</span>}
+                          {event.tag && <span className="event-card-tag">{event.tag}</span>}
+                        </div>
+                        {event.description && <div className="event-card-desc">{event.description}</div>}
                       </div>
                     </div>
                     <div className="event-card-actions">
@@ -357,11 +388,20 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
       {selectedEvent && (
         <div className="event-modal-overlay" onClick={() => setSelectedEvent(null)}>
           <div className="event-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{selectedEvent.name}</h3>
+            <h3>{selectedEvent.title}</h3>
             <div className="event-details">
-              <p><strong>Date:</strong> {selectedEvent.date}</p>
-              {selectedEvent.time && <p><strong>Time:</strong> {selectedEvent.time}</p>}
+              <p><strong>Date:</strong> {selectedEvent.start_date}{selectedEvent.end_date && selectedEvent.end_date !== selectedEvent.start_date ? ` – ${selectedEvent.end_date}` : ''}</p>
+              {!selectedEvent.all_day && (
+                <p>
+                  <strong>Time:</strong>{' '}
+                  {selectedEvent.start_time ? format(new Date(`2000-01-01T${selectedEvent.start_time}`), 'h:mm a') : ''}
+                  {selectedEvent.end_time ? ` – ${format(new Date(`2000-01-01T${selectedEvent.end_time}`), 'h:mm a')}` : ''}
+                </p>
+              )}
+              {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
+              {selectedEvent.label && <p><strong>Label:</strong> {selectedEvent.label}</p>}
               {selectedEvent.tag && <p><strong>Tag:</strong> {selectedEvent.tag}</p>}
+              {selectedEvent.description && <p><strong>Description:</strong> {selectedEvent.description}</p>}
             </div>
             <button onClick={() => setSelectedEvent(null)} className="btn btn-primary">Close</button>
           </div>
@@ -378,37 +418,80 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
 
             <div className="edit-form">
               <div className="form-group">
-                <label htmlFor="edit-name">Event Name</label>
+                <label htmlFor="edit-title">Title</label>
                 <input
-                  id="edit-name"
+                  id="edit-title"
                   type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  placeholder="Event name"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  placeholder="Event title"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-location">Location</label>
+                <input
+                  id="edit-location"
+                  type="text"
+                  value={editForm.location}
+                  onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                  placeholder="Online or building/room"
                 />
               </div>
 
               <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="edit-date">Date</label>
+                  <label htmlFor="edit-start-date">Start date</label>
                   <input
-                    id="edit-date"
+                    id="edit-start-date"
                     type="date"
-                    value={editForm.date}
-                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                    value={editForm.start_date}
+                    onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
                   />
                 </div>
-
                 <div className="form-group">
-                  <label htmlFor="edit-time">Time</label>
+                  <label htmlFor="edit-start-time">Start time</label>
                   <input
-                    id="edit-time"
+                    id="edit-start-time"
                     type="time"
-                    value={editForm.time}
-                    onChange={(e) => setEditForm({ ...editForm, time: e.target.value })}
+                    value={editForm.start_time}
+                    onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
                     disabled={editForm.all_day}
                   />
                 </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="edit-end-date">End date</label>
+                  <input
+                    id="edit-end-date"
+                    type="date"
+                    value={editForm.end_date}
+                    onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="edit-end-time">End time</label>
+                  <input
+                    id="edit-end-time"
+                    type="time"
+                    value={editForm.end_time}
+                    onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })}
+                    disabled={editForm.all_day}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-label">Label</label>
+                <input
+                  id="edit-label"
+                  type="text"
+                  value={editForm.label}
+                  onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
+                  placeholder="e.g., CS101"
+                />
               </div>
 
               <div className="form-group">
@@ -418,7 +501,17 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                   type="text"
                   value={editForm.tag}
                   onChange={(e) => setEditForm({ ...editForm, tag: e.target.value })}
-                  placeholder="Optional tag"
+                  placeholder="e.g., Class, Meeting"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-description">Description</label>
+                <textarea
+                  id="edit-description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  placeholder="Details"
                 />
               </div>
 
@@ -427,7 +520,12 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                   <input
                     type="checkbox"
                     checked={editForm.all_day}
-                    onChange={(e) => setEditForm({ ...editForm, all_day: e.target.checked, time: e.target.checked ? '' : editForm.time })}
+                    onChange={(e) => setEditForm({
+                      ...editForm,
+                      all_day: e.target.checked,
+                      start_time: e.target.checked ? '' : editForm.start_time,
+                      end_time: e.target.checked ? '' : editForm.end_time
+                    })}
                   />
                   All day event
                 </label>
@@ -441,7 +539,11 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
                   <button onClick={() => setEditingEvent(null)} className="btn btn-secondary" disabled={saving}>
                     Cancel
                   </button>
-                  <button onClick={handleSaveEdit} className="btn btn-primary" disabled={saving || !editForm.name || !editForm.date}>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="btn btn-primary"
+                    disabled={saving || !editForm.title || !editForm.start_date || !editForm.end_date}
+                  >
                     {saving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
