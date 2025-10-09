@@ -22,7 +22,6 @@ export interface ParseResult {
   tokensUsed: number
 }
 
-/* -------------------- formatting helpers (unchanged) -------------------- */
 function toSmartTitleCase(s: string): string {
   const words = (s || "").trim().replace(/\s+/g, " ").split(" ")
   return words
@@ -58,7 +57,6 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return out
 }
 
-/* -------------------- image utils (unchanged) -------------------- */
 function fileToDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
@@ -103,7 +101,6 @@ function preprocessImageToDataUrl(img: HTMLImageElement): string {
   return c.toDataURL("image/png", 0.95)
 }
 
-/* -------------------- your original prompt (unchanged) -------------------- */
 const SYSTEM_PROMPT = `You are an AI calendar event extractor for PDFs such as syllabi, class schedules, and event lists.
 Analyze text across multiple pages and output valid JSON.
 
@@ -131,6 +128,8 @@ Analyze text across multiple pages and output valid JSON.
 20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
 21. Return only valid JSON in the format below.
 
+### Image Specific Rules
+1. Create seperate events for information found in the same cell of a calendar view
 
 
 ### Output format
@@ -153,7 +152,6 @@ Analyze text across multiple pages and output valid JSON.
   ]
 }`
 
-/* -------------------- robust JSON parse (unchanged) -------------------- */
 async function robustJsonParse(s: string): Promise<any> {
   try {
     return JSON.parse(s)
@@ -192,7 +190,6 @@ async function robustJsonParse(s: string): Promise<any> {
   }
 }
 
-/* -------------------- schema (unchanged) -------------------- */
 const IMAGE_EVENTS_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -236,79 +233,8 @@ const IMAGE_EVENTS_SCHEMA = {
   required: ["events"]
 }
 
-/* -------------------- NEW: Tesseract OCR helpers -------------------- */
-type OCRWord = { text: string; x0: number; y0: number; x1: number; y1: number; conf: number }
-
-async function tesseractRecognize(dataUrl: string): Promise<OCRWord[]> {
-  try {
-    const { createWorker, PSM } = await import("tesseract.js")
-    const worker = await createWorker()
-    await worker.loadLanguage("eng")
-    await worker.initialize("eng")
-    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
-    const { data }: any = await worker.recognize(dataUrl)
-    await worker.terminate()
-    const out: OCRWord[] = []
-    for (const w of data.words || []) {
-      const t = (w.text || "").trim()
-      if (!t) continue
-      const b = w.bbox || {}
-      const conf = typeof w.confidence === "number" ? w.confidence : 0
-      if (conf < 55) continue
-      out.push({
-        text: t,
-        x0: b.x0 ?? 0,
-        y0: b.y0 ?? 0,
-        x1: b.x1 ?? 0,
-        y1: b.y1 ?? 0,
-        conf
-      })
-    }
-    return out
-  } catch {
-    return []
-  }
-}
-
-// compact payload: merge adjacent words into short line spans to save tokens
-function buildCompactOcrPayload(words: OCRWord[]) {
-  // simple line bucketing by y
-  words.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)
-  const lines: { y: number; items: OCRWord[] }[] = []
-  const yThresh = 10
-  for (const w of words) {
-    const last = lines[lines.length - 1]
-    if (last && Math.abs(last.y - w.y0) <= yThresh) {
-      last.items.push(w)
-      last.y = Math.min(last.y, w.y0)
-    } else {
-      lines.push({ y: w.y0, items: [w] })
-    }
-  }
-  const regions = lines.map(l => {
-    const x0 = Math.min(...l.items.map(i => i.x0))
-    const y0 = Math.min(...l.items.map(i => i.y0))
-    const x1 = Math.max(...l.items.map(i => i.x1))
-    const y1 = Math.max(...l.items.map(i => i.y1))
-    const text = l.items.map(i => i.text).join(" ").replace(/\s{2,}/g, " ").slice(0, 140)
-    return { t: text, b: [x0, y0, x1 - x0, y1 - y0] }
-  })
-  // cap to ~200 regions to keep request lean
-  return regions.slice(0, 200)
-}
-
-/* -------------------- OpenAI call: images + OCR payload -------------------- */
-async function callOpenAIWithImage(images: string[], ocrPayload: any): Promise<{ parsed: any; tokensUsed: number }> {
-  const userParts: any[] = [
-    {
-      type: "input_text",
-      text:
-        "You will receive a compact OCR payload of text regions with bounding boxes to assist date anchoring on uneven grids. " +
-        "Use it as supplemental text; return only JSON."
-    },
-    { type: "input_text", text: JSON.stringify({ regions: ocrPayload }) }
-  ]
-  for (const url of images) userParts.push({ type: "input_image", image_url: url })
+async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
+  const userParts = images.map(url => ({ type: "input_image", image_url: url }))
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -337,24 +263,15 @@ async function callOpenAIWithImage(images: string[], ocrPayload: any): Promise<{
   return { parsed, tokensUsed }
 }
 
-/* -------------------- main -------------------- */
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
 
-    // 1) two versions of the image (processed + original)
     const originalUrl = await fileToDataURL(file)
     const img = await loadImage(originalUrl)
     const processedUrl = preprocessImageToDataUrl(img)
+    const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl])
 
-    // 2) OCR on the processed image
-    const words = await tesseractRecognize(processedUrl)
-    const ocrPayload = buildCompactOcrPayload(words)
-
-    // 3) Call model with images + OCR payload
-    const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl], ocrPayload)
-
-    // 4) same normalization + ordering
     const events = postNormalizeEvents(dedupeEvents(parsed?.events || []))
     events.sort(
       (a, b) =>
