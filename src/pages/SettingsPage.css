@@ -301,36 +301,35 @@
 
 .save-changes-wrap {
   position: fixed;
+  bottom: 24px;
   left: 0;
   right: 0;
-  bottom: 16px;
   display: flex;
   justify-content: center;
-  z-index: 1100;
+  z-index: 2000;
   pointer-events: none;
 }
 
 .save-changes-pill {
-  display: none;
-  min-width: 360px;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  min-width: 340px;
   max-width: 90vw;
-  padding: 14px 28px;
+  padding: 16px 32px;
   border-radius: 9999px;
   font-weight: 600;
   font-size: 1rem;
   text-align: center;
   border: 1px solid transparent;
   box-shadow: var(--shadow-md);
-  transition: transform 0.15s ease, opacity 0.15s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-  pointer-events: auto;
 }
 
 .save-changes-pill.show {
-  display: inline-block;
-}
-
-.save-changes-pill:active {
-  transform: translateY(1px);
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 [data-theme='light'] .save-changes-pill {
@@ -346,9 +345,13 @@
 }
 
 @media (max-width: 768px) {
-  .settings-container {
-    padding: 80px 16px 24px;
+  .save-changes-pill {
+    min-width: 280px;
+    width: calc(100vw - 40px);
+    padding: 14px 28px;
   }
+}
+
 
   .setting-item {
     flex-direction: column;
