@@ -32,156 +32,94 @@ type Event = Database['public']['Tables']['events']['Row'];
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
-  const [showLaunch, setShowLaunch] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [stage, setStage] = useState<'launch' | 'auth' | 'welcome' | 'landing'>('launch');
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
 
   useEffect(() => {
-    const hasVisited = sessionStorage.getItem('hasVisited');
-    if (hasVisited) {
-      setShowLaunch(false);
-    }
+    const runStartupFlow = async () => {
+      setStage('launch');
+      await new Promise(res => setTimeout(res, 1200));
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (session) {
+        setStage('welcome');
+        await new Promise(res => setTimeout(res, 1200));
+        setStage('landing');
+      } else {
+        setStage('auth');
+      }
+    };
+    runStartupFlow();
   }, []);
 
   useEffect(() => {
     if (!authLoading && user) {
-      const loadUserData = async () => {
-        try {
-          const userData = await DatabaseService.getUser(user.id);
-          if (userData?.name) {
-            setUserName(userData.name);
-          }
-        } catch (error) {
-          console.error('Failed to load user data:', error);
-        }
+      const fetchUser = async () => {
+        const u = await DatabaseService.getUser(user.id);
+        if (u?.name) setUserName(u.name);
       };
-      loadUserData();
+      fetchUser();
     }
   }, [user, authLoading]);
 
-  const handleLaunchComplete = () => {
-    sessionStorage.setItem('hasVisited', 'true');
-    setShowLaunch(false);
-    if (user) {
-      const hasSeenWelcome = sessionStorage.getItem('hasSeenWelcome');
-      if (!hasSeenWelcome) {
-        setShowWelcome(true);
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session) {
+        setStage('welcome');
+        await new Promise(res => setTimeout(res, 1200));
+        setStage('landing');
+      } else {
+        setStage('launch');
+        await new Promise(res => setTimeout(res, 1000));
+        setStage('auth');
       }
-    }
-  };
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
-  const handleWelcomeComplete = () => {
-    sessionStorage.setItem('hasSeenWelcome', 'true');
-    setShowWelcome(false);
-  };
-
-  const handleNavigate = (page: string) => {
-    setCurrentPage(page as Page);
-  };
-
-  const handleDayClick = (date: Date) => {
-    setSelectedDate(date);
-  };
-
+  const handleNavigate = (page: string) => setCurrentPage(page as Page);
+  const handleDayClick = (date: Date) => setSelectedDate(date);
   const handleEventsExtracted = (events: ParsedEvent[]) => {
     setExtractedEvents(events);
     setCurrentPage('eventConfirmation');
   };
-
   const handleEventsConfirmed = () => {
     setExtractedEvents([]);
     setCurrentPage('landing');
   };
-
   const handleEventsCancelled = () => {
     setExtractedEvents([]);
     setCurrentPage('landing');
   };
 
-  if (window.location.pathname === '/debug-auth') {
-    return <DebugAuth />;
-  }
-
-  if (showLaunch) {
-    return <LaunchScreen onComplete={handleLaunchComplete} />;
-  }
-
-  if (showWelcome && user) {
-    return <WelcomeScreen userName={userName} onComplete={handleWelcomeComplete} />;
-  }
-
-  if (authLoading) {
+  if (stage === 'launch') return <LaunchScreen />;
+  if (stage === 'auth') return <AuthPage />;
+  if (stage === 'welcome' && user) return <WelcomeScreen userName={userName} />;
+  if (stage === 'landing' && user) {
+    if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
+      return (
+        <EventConfirmation
+          events={extractedEvents}
+          onConfirm={handleEventsConfirmed}
+          onCancel={handleEventsCancelled}
+        />
+      );
+    }
+    if (currentPage === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
+    if (currentPage === 'account') return <AccountPage onNavigate={handleNavigate} />;
+    if (currentPage === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div className="loading-spinner" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthPage />;
-  }
-
-  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
-    return (
-      <EventConfirmation
-        events={extractedEvents}
-        onConfirm={handleEventsConfirmed}
-        onCancel={handleEventsCancelled}
+      <LandingPage
+        onNavigate={handleNavigate}
+        onDateClick={handleDayClick}
+        onEventsExtracted={handleEventsExtracted}
       />
     );
   }
-
-  if (currentPage === 'settings') {
-    return <SettingsPage onNavigate={handleNavigate} />;
-  }
-
-  if (currentPage === 'account') {
-    return <AccountPage onNavigate={handleNavigate} />;
-  }
-
-  if (currentPage === 'subscription') {
-    return <SubscriptionPage onNavigate={handleNavigate} />;
-  }
-
-  return (
-    <LandingPage
-      onNavigate={handleNavigate}
-      onDateClick={handleDayClick}
-      onEventsExtracted={handleEventsExtracted}
-    />
-  );
-}
-
-function DebugAuth() {
-  const [session, setSession] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  return (
-    <pre style={{ whiteSpace: 'pre-wrap', padding: 20 }}>
-      SESSION: {JSON.stringify(session, null, 2)}
-      {"\n\n"}
-      USER: {JSON.stringify(user, null, 2)}
-    </pre>
-  );
+  return null;
 }
 
 export default function App() {
