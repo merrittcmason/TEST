@@ -29,7 +29,7 @@ interface EditableEvent {
 function toEditable(e: any, i: number): EditableEvent {
   const hasTimes = e?.start_time != null || e?.end_time != null
   return {
-    tempId: `temp-${i}-${e?.id ?? crypto.randomUUID?.() ?? Date.now()}`,
+    tempId: `temp-${i}-${(globalThis as any).crypto?.randomUUID?.() ?? Date.now()}`,
     title: (e?.title ?? e?.name ?? e?.event_name ?? '').toString(),
     location: (e?.location ?? null) as string | null,
     all_day: Boolean(e?.all_day ?? (!hasTimes)),
@@ -58,10 +58,36 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   const hydrated = useRef(false)
 
   useEffect(() => {
-    if (hydrated.current) return
-    setEditableEvents((events ?? []).map((e, i) => toEditable(e, i)))
-    hydrated.current = true
-  }, [events])
+    let active = true
+    async function loadDrafts() {
+      if (!user) return
+      if (hydrated.current) return
+      setLoading(true)
+      setError('')
+      try {
+        const svc: any = DatabaseService as any
+        let drafts: any[] = []
+        if (typeof svc.getDraftEvents === 'function') {
+          drafts = await svc.getDraftEvents(user.id)
+        } else if (typeof svc.fetchDraftEvents === 'function') {
+          drafts = await svc.fetchDraftEvents(user.id)
+        }
+        const source = Array.isArray(drafts) && drafts.length > 0 ? drafts : (events ?? [])
+        if (!active) return
+        setEditableEvents(source.map((e: any, i: number) => toEditable(e, i)))
+        hydrated.current = true
+      } catch (err: any) {
+        if (!active) return
+        setError(err?.message || 'Failed to load drafts')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    loadDrafts()
+    return () => {
+      active = false
+    }
+  }, [user, events])
 
   useEffect(() => {
     if (applyLabelToAll && globalLabel !== '') {
@@ -93,7 +119,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   const handleAddEvent = () => {
     const last = editableEvents[editableEvents.length - 1]
     const newEvent: EditableEvent = {
-      tempId: `temp-${crypto.randomUUID?.() ?? Date.now()}`,
+      tempId: `temp-${(globalThis as any).crypto?.randomUUID?.() ?? Date.now()}`,
       title: '',
       location: '',
       all_day: true,
