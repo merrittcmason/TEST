@@ -8,41 +8,6 @@ import type { Database } from '../lib/supabase'
 import { asDisplayRange } from '../utils/datetime'
 import './SettingsPage.css'
 
-const { timezone, setTimezone, tzOptions, preferDevice, setPreferDevice } = useUserSettings()
-
-<section className="settings-section">
-  <h2 className="section-title">Time Zone</h2>
-  <div className="settings-card">
-    <div className="setting-item">
-      <div className="setting-info">
-        <label className="setting-label">Display Time Zone</label>
-        <p className="setting-description">Events are stored in UTC and shown in your chosen zone</p>
-      </div>
-      <div className="timezone-controls">
-        <label className="toggle-switch" style={{ marginRight: 16 }}>
-          <input
-            type="checkbox"
-            checked={preferDevice}
-            onChange={(e) => setPreferDevice(e.target.checked)}
-          />
-          <span className="toggle-slider"></span>
-        </label>
-        <span style={{ marginRight: 12 }}>Use device timezone</span>
-        <select
-          className="setting-select"
-          value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
-          disabled={preferDevice}
-        >
-          {tzOptions.map(z => (
-            <option key={z} value={z}>{z}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-  </div>
-</section>
-
 type Event = Database['public']['Tables']['events']['Row']
 
 interface SettingsPageProps {
@@ -52,7 +17,7 @@ interface SettingsPageProps {
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const { theme, setTheme } = useTheme()
   const { user } = useAuth()
-  const { timezone, setTimezone, tzOptions } = useUserSettings()
+  const { timezone, setTimezone, tzOptions, preferDevice, setPreferDevice } = useUserSettings()
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const [availableLabels, setAvailableLabels] = useState<string[]>([])
   const [allEvents, setAllEvents] = useState<Event[]>([])
@@ -180,13 +145,29 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
               <div className="setting-item">
                 <div className="setting-info">
                   <label className="setting-label">Display Time Zone</label>
-                  <p className="setting-description">Store events in UTC; display in your preferred zone</p>
+                  <p className="setting-description">Events are stored in UTC and shown in your selected zone</p>
                 </div>
-                <select className="setting-select" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-                  {tzOptions.map(z => (
-                    <option key={z} value={z}>{z}</option>
-                  ))}
-                </select>
+                <div className="timezone-controls">
+                  <label className="toggle-switch" style={{ marginRight: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={preferDevice}
+                      onChange={(e) => setPreferDevice(e.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                  <span className="toggle-label" style={{ marginRight: 12 }}>Use device timezone</span>
+                  <select
+                    className="setting-select"
+                    value={timezone}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    disabled={preferDevice}
+                  >
+                    {tzOptions.map(z => (
+                      <option key={z} value={z}>{z}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </section>
