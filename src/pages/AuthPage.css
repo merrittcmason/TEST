@@ -566,3 +566,38 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+.auth-container.signup .terms-item input[type="checkbox"],
+.auth-container.mode-signup .terms-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 4px;
+  background: #000000;
+  display: inline-block;
+  position: relative;
+  outline: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+[data-theme='light'] .auth-container.signup .terms-item input[type="checkbox"],
+[data-theme='light'] .auth-container.mode-signup .terms-item input[type="checkbox"] {
+  background: #000000;
+}
+
+.auth-container.signup .terms-item input[type="checkbox"]:hover,
+.auth-container.mode-signup .terms-item input[type="checkbox"]:hover {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.auth-container.signup .terms-item input[type="checkbox"]:checked,
+.auth-container.mode-signup .terms-item input[type="checkbox"]:checked {
+  background: var(--success);
+  border-color: var(--success);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 12px;
+}
