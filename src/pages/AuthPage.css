@@ -209,3 +209,259 @@
 .link-btn:active {
   opacity: 0.7;
 }
+/* ===== Create Account (scoped) ===== */
+.auth-container.signup .auth-form,
+.auth-container.mode-signup .auth-form {
+  gap: 10px;
+  margin-top: 6px;
+}
+
+/* Tighter spacing for labels/fields in signup */
+.auth-container.signup .form-group,
+.auth-container.mode-signup .form-group {
+  gap: 6px;
+}
+
+/* Modern input look, light/dark aware, with success checkmark support */
+.auth-container.signup .auth-input,
+.auth-container.mode-signup .auth-input {
+  position: relative;
+}
+
+.auth-container.signup .auth-input input,
+.auth-container.mode-signup .auth-input input,
+.auth-container.signup .auth-input select,
+.auth-container.mode-signup .auth-input select {
+  width: 100%;
+  padding: 11px 40px 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.94rem;
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+  outline: none;
+}
+
+/* Dark mode inputs for signup */
+[data-theme='dark'] .auth-container.signup .auth-input input,
+[data-theme='dark'] .auth-container.mode-signup .auth-input input,
+[data-theme='dark'] .auth-container.signup .auth-input select,
+[data-theme='dark'] .auth-container.mode-signup .auth-input select {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* Focus ring */
+.auth-container.signup .auth-input input:focus,
+.auth-container.mode-signup .auth-input input:focus,
+.auth-container.signup .auth-input select:focus,
+.auth-container.mode-signup .auth-input select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+/* Valid state: subtle green + checkmark */
+.auth-container.signup .auth-input.valid input,
+.auth-container.mode-signup .auth-input.valid input {
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.auth-container.signup .auth-input.valid::after,
+.auth-container.mode-signup .auth-input.valid::after {
+  content: '✓';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--success);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Error state (signup only) */
+.auth-container.signup .auth-input.error input,
+.auth-container.mode-signup .auth-input.error input {
+  border-color: var(--error);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 18%, transparent);
+}
+
+/* Two-column compact requirements under password */
+.auth-container.signup .password-requirements,
+.auth-container.mode-signup .password-requirements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin-top: 4px;
+}
+
+.auth-container.signup .password-requirements .req,
+.auth-container.mode-signup .password-requirements .req {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  line-height: 1.15;
+}
+
+.auth-container.signup .password-requirements .req::before,
+.auth-container.mode-signup .password-requirements .req::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background: transparent;
+}
+
+.auth-container.signup .password-requirements .req.ok,
+.auth-container.mode-signup .password-requirements .req.ok {
+  color: var(--text-secondary);
+}
+
+.auth-container.signup .password-requirements .req.ok::before,
+.auth-container.mode-signup .password-requirements .req.ok::before {
+  content: '✓';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--success);
+  color: var(--bg-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+/* Smaller, tighter password meter */
+.auth-container.signup .password-meter,
+.auth-container.mode-signup .password-meter {
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--bg-tertiary);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.auth-container.signup .password-meter-fill,
+.auth-container.mode-signup .password-meter-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  transition: width .2s ease, background-color .2s ease;
+  background-color: var(--error);
+}
+
+.auth-container.signup .password-meter-fill.weak,
+.auth-container.mode-signup .password-meter-fill.weak {
+  width: 33%;
+  background-color: var(--error);
+}
+.auth-container.signup .password-meter-fill.fair,
+.auth-container.mode-signup .password-meter-fill.fair {
+  width: 66%;
+  background-color: var(--warning);
+}
+.auth-container.signup .password-meter-fill.strong,
+.auth-container.mode-signup .password-meter-fill.strong {
+  width: 100%;
+  background-color: var(--success);
+}
+
+/* DOB row tighter */
+.auth-container.signup .dob-row,
+.auth-container.mode-signup .dob-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr;
+  gap: 8px;
+}
+
+/* Terms box tighter and modern */
+.auth-container.signup .terms-box,
+.auth-container.mode-signup .terms-box {
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+[data-theme='dark'] .auth-container.signup .terms-box,
+[data-theme='dark'] .auth-container.mode-signup .terms-box {
+  background-color: var(--bg-tertiary);
+}
+
+.auth-container.signup .terms-item,
+.auth-container.mode-signup .terms-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* Mode chips tighter */
+.auth-container.signup .mode-select,
+.auth-container.mode-signup .mode-select {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.auth-container.signup .mode-chip,
+.auth-container.mode-signup .mode-chip {
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, color .2s ease;
+}
+[data-theme='dark'] .auth-container.signup .mode-chip,
+[data-theme='dark'] .auth-container.mode-signup .mode-chip {
+  background: var(--bg-tertiary);
+}
+.auth-container.signup .mode-chip.active,
+.auth-container.mode-signup .mode-chip.active {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+}
+
+/* Signup divider spacing tighter than login */
+.auth-container.signup .auth-divider,
+.auth-container.mode-signup .auth-divider {
+  margin: 16px 0 12px;
+}
+
+/* Action button area tighter */
+.auth-container.signup .signup-actions,
+.auth-container.mode-signup .signup-actions {
+  margin-top: 4px;
+}
+
+/* Responsive tweaks */
+@media (max-width: 520px) {
+  .auth-container.signup .form-row,
+  .auth-container.mode-signup .form-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .auth-container.signup .dob-row,
+  .auth-container.mode-signup .dob-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .auth-container.signup .mode-select,
+  .auth-container.mode-signup .mode-select {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
