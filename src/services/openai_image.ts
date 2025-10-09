@@ -128,10 +128,6 @@ Analyze text across multiple pages and output valid JSON.
 20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
 21. Return only valid JSON in the format below.
 
-### Image Specific Rules
-1. Create seperate events for information found in the same cell of a calendar view
-
-
 ### Output format
 {
   "events": [
