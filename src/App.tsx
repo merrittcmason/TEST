@@ -30,170 +30,100 @@ const supabase = createClient(
 type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
 type Event = Database['public']['Tables']['events']['Row'];
 
-let launchedInThisTab = false;
-
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
-  const [showLaunch, setShowLaunch] = useState<boolean>(() => !launchedInThisTab);
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [stage, setStage] = useState<'launch' | 'auth' | 'welcome' | 'landing'>('launch');
   const [currentPage, setCurrentPage] = useState<Page>('landing');
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
+  const [launchComplete, setLaunchComplete] = useState(false);
 
   const hasShownWelcomeRef = useRef(false);
-  const justFinishedLaunchRef = useRef(false);
-  const lastUserIdRef = useRef<string | null>(null);
+  const lastUserRef = useRef<string | null>(null);
+
+  const LAUNCH_DURATION = 2500;
+  const WELCOME_DURATION = 3000;
 
   useEffect(() => {
-    if (!launchedInThisTab) {
-      launchedInThisTab = true;
+    const started = sessionStorage.getItem('launchedOnce');
+    if (!started) {
+      setStage('launch');
+      sessionStorage.setItem('launchedOnce', 'true');
+      setTimeout(() => {
+        setLaunchComplete(true);
+      }, LAUNCH_DURATION);
+    } else {
+      setLaunchComplete(true);
     }
   }, []);
 
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && launchComplete) {
+      if (lastUserRef.current !== user.id) {
+        lastUserRef.current = user.id;
+        hasShownWelcomeRef.current = false;
+      }
+
+      if (!hasShownWelcomeRef.current) {
+        setStage('welcome');
+        hasShownWelcomeRef.current = true;
+        setTimeout(() => setStage('landing'), WELCOME_DURATION);
+      } else {
+        setStage('landing');
+      }
+
       (async () => {
         try {
-          const userData = await DatabaseService.getUser(user.id);
-          if (userData?.name) setUserName(userData.name);
+          const data = await DatabaseService.getUser(user.id);
+          if (data?.name) setUserName(data.name);
         } catch {}
       })();
+    } else if (!authLoading && !user && launchComplete) {
+      setStage('auth');
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, launchComplete]);
 
-  useEffect(() => {
-    const uid = user?.id ?? null;
-    if (uid !== lastUserIdRef.current) {
-      hasShownWelcomeRef.current = false;
-      lastUserIdRef.current = uid;
-    }
-    if (!authLoading && uid && !showLaunch && !hasShownWelcomeRef.current && !justFinishedLaunchRef.current) {
-      setShowWelcome(true);
-      hasShownWelcomeRef.current = true;
-    }
-  }, [authLoading, user, showLaunch]);
-
-  const handleLaunchComplete = () => {
-    setShowLaunch(false);
-    justFinishedLaunchRef.current = true;
-    if (user && !hasShownWelcomeRef.current) {
-      setShowWelcome(true);
-      hasShownWelcomeRef.current = true;
-    }
-    setTimeout(() => {
-      justFinishedLaunchRef.current = false;
-    }, 500);
-  };
-
-  const handleWelcomeComplete = () => {
-    setShowWelcome(false);
-  };
-
-  const handleNavigate = (page: string) => {
-    setCurrentPage(page as Page);
-  };
-
-  const handleDayClick = (date: Date) => {
-    setSelectedDate(date);
-  };
-
+  const handleNavigate = (page: string) => setCurrentPage(page as Page);
   const handleEventsExtracted = (events: ParsedEvent[]) => {
     setExtractedEvents(events);
     setCurrentPage('eventConfirmation');
   };
-
   const handleEventsConfirmed = () => {
     setExtractedEvents([]);
     setCurrentPage('landing');
   };
-
   const handleEventsCancelled = () => {
     setExtractedEvents([]);
     setCurrentPage('landing');
   };
 
-  if (window.location.pathname === '/debug-auth') {
-    return <DebugAuth />;
-  }
+  if (stage === 'launch') return <LaunchScreen />;
+  if (stage === 'auth') return <AuthPage />;
+  if (stage === 'welcome' && user)
+    return <WelcomeScreen userName={userName} onComplete={() => setStage('landing')} />;
 
-  if (showLaunch) {
-    return <LaunchScreen onComplete={handleLaunchComplete} />;
-  }
-
-  if (showWelcome && user) {
-    return <WelcomeScreen userName={userName} onComplete={handleWelcomeComplete} />;
-  }
-
-  if (authLoading) {
+  if (stage === 'landing' && user) {
+    if (currentPage === 'eventConfirmation' && extractedEvents.length > 0)
+      return (
+        <EventConfirmation
+          events={extractedEvents}
+          onConfirm={handleEventsConfirmed}
+          onCancel={handleEventsCancelled}
+        />
+      );
+    if (currentPage === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
+    if (currentPage === 'account') return <AccountPage onNavigate={handleNavigate} />;
+    if (currentPage === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div className="loading-spinner" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <AuthPage />;
-  }
-
-  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
-    return (
-      <EventConfirmation
-        events={extractedEvents}
-        onConfirm={handleEventsConfirmed}
-        onCancel={handleEventsCancelled}
+      <LandingPage
+        onNavigate={handleNavigate}
+        onDateClick={() => {}}
+        onEventsExtracted={handleEventsExtracted}
       />
     );
   }
 
-  if (currentPage === 'settings') {
-    return <SettingsPage onNavigate={handleNavigate} />;
-  }
-
-  if (currentPage === 'account') {
-    return <AccountPage onNavigate={handleNavigate} />;
-  }
-
-  if (currentPage === 'subscription') {
-    return <SubscriptionPage onNavigate={handleNavigate} />;
-  }
-
-  return (
-    <LandingPage
-      onNavigate={handleNavigate}
-      onDateClick={handleDayClick}
-      onEventsExtracted={handleEventsExtracted}
-    />
-  );
-}
-
-function DebugAuth() {
-  const [session, setSession] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  return (
-    <pre style={{ whiteSpace: 'pre-wrap', padding: 20 }}>
-      SESSION: {JSON.stringify(session, null, 2)}
-      {'\n\n'}
-      USER: {JSON.stringify(user, null, 2)}
-    </pre>
-  );
+  return null;
 }
 
 export default function App() {
