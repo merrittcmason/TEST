@@ -97,38 +97,47 @@ function preprocessImageToDataUrl(img: HTMLImageElement): string {
   return c.toDataURL("image/png", 0.95)
 }
 
-const SYSTEM_PROMPT = `You are an AI calendar event extractor. The input is a screenshot or photo of a schedule, syllabus, or calendar. Your task is to output structured events in valid JSON only.
+const SYSTEM_PROMPT = `You are an AI calendar event extractor for PDFs such as syllabi, class schedules, and event lists.
+Analyze text across multiple pages and output valid JSON.
 
 ### Rules
-1. Return a JSON object with one key: "events", containing an array of event objects.
-2. Each event object must have the fields:
+1. Return one JSON object with the key "events", containing an array of event objects.
+2. Each event must include:
    title, location, all_day, start_date, start_time, end_date, end_time, is_recurring, recurrence_rule, label, tag, description.
 3. Dates must be formatted YYYY-MM-DD. If the year is missing, assume ${new Date().getFullYear()}.
-4. If a time range appears (e.g., 0800–2000), fill both start_time and end_time.
-5. If a date range appears (e.g., Nov 17–18), fill both start_date and end_date.
-6. If an event has no time but is an all-day event, set all_day=true and both time fields=null.
-7. If an event lacks an end date/time, set end_date=null and end_time=null.
-8. If no recurrence is visible, set is_recurring=false and recurrence_rule=null.
-9. If it looks recurring (daily, weekly, etc.), fill is_recurring=true and use recurrence_rule like "DAILY", "WEEKLY", etc.
-10. If it looks like an assignment, quiz, exam, or class, try to infer a proper tag and label.
-11. If you can’t find something, use null instead of guessing.
-12. Return ONLY valid JSON in the format below.
-
+4. If a time range appears (e.g., 0800–2000), capture both start_time and end_time.
+5. If a date range appears (e.g., Nov 17–18), capture both start_date and end_date.
+6. If an event has no explicit time, set all_day=true and both times=null.
+7. If no recurrence is visible, set is_recurring=false and recurrence_rule=null.
+8. If recurring is implied, fill is_recurring=true and recurrence_rule like "DAILY", "WEEKLY", etc.
+9. If event's that look like assignments or due dates and have no explicit times, set start_time = "11:00" and end_time = "11:59". Do not infer or create time ranges unless explicitly shown.
+10. Avoid duplicates. Normalize event names in title case.
+11. If multiple tasks appear on the same line or separated by “&”, commas, or semicolons, split them into individual events, each preserving the date.
+12. If the connected parts include different activity types (e.g. "Lab", "Quiz", "Exam", "Test", "Discussion Board", "Assignment", "Practice Problems"), treat each as a separate event with the same date/time.
+13. If all connected parts are of the same type (e.g. "Practice Problems – Sections 1.1, 1.2, 1.3"), keep them together as a single event and preserve the section list in the title.
+14. Connectors such as "&", "and", "plus", or semicolons signal that different event groups may appear together — check for differences in type words before deciding whether to split.
+15. Do not truncate the extraction early. Process all rows and pages until the end of the document.
+16. Each event should represent one distinct activity, even if multiple occur on the same date.
+17. Preserve capitalization for acronyms or fully uppercase terms (e.g., “EVA”, “HW”, “EXAM”, “LAB”, “QUIZ”) when they appear in the source text.
+18. Only apply title casing to standard words, not to words that are already all uppercase.
+19. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
+20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
+21. Return only valid JSON in the format below.
 ### Output format
 {
   "events": [
     {
-      "title": "Practice Problems 2.5",
+      "title": "Midterm Exam",
       "location": null,
       "all_day": false,
-      "start_date": "2025-11-17",
-      "start_time": "08:00",
-      "end_date": "2025-11-17",
-      "end_time": "20:00",
+      "start_date": "2025-03-14",
+      "start_time": "09:00",
+      "end_date": "2025-03-14",
+      "end_time": "11:00",
       "is_recurring": false,
       "recurrence_rule": null,
-      "label": "Math 101",
-      "tag": "Homework",
+      "label": "BIO-201",
+      "tag": "Exam",
       "description": null
     }
   ]
