@@ -1,47 +1,26 @@
-export type EventLike = {
-  all_day: boolean | null
-  start_date: string | null
-  start_time: string | null
-  end_date: string | null
-  end_time: string | null
+import { DateTime } from 'luxon'
+
+export function toUTC(date: string, time: string | null, tz: string): { utcDate: string, utcTime: string | null } {
+  if (!time) return { utcDate: date, utcTime: null }
+  const local = DateTime.fromISO(`${date}T${time}`, { zone: tz })
+  const utc = local.toUTC()
+  return { utcDate: utc.toISODate()!, utcTime: utc.toFormat('HH:mm:ss') }
 }
 
-function pad(n: number) {
-  return n < 10 ? `0${n}` : String(n)
+export function fromUTC(date: string, time: string | null, tz: string): { localDate: string, localTime: string | null } {
+  if (!time) return { localDate: date, localTime: null }
+  const utc = DateTime.fromISO(`${date}T${time}`, { zone: 'UTC' })
+  const local = utc.setZone(tz)
+  return { localDate: local.toISODate()!, localTime: local.toFormat('HH:mm') }
 }
 
-function utcDateFromParts(dateStr: string, timeStr: string | null): Date {
-  const t = timeStr ?? '00:00'
-  return new Date(`${dateStr}T${t}:00.000Z`)
+export function formatTimeForDisplay(time: string | null, tz: string, use24h: boolean): string {
+  if (!time) return ''
+  const utc = DateTime.fromISO(`1970-01-01T${time}`, { zone: 'UTC' })
+  const local = utc.setZone(tz)
+  return local.toFormat(use24h ? 'HH:mm' : 'h:mm a')
 }
 
-function fmt(d: Date, tz: string, opts: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat('en-US', { timeZone: tz, ...opts }).format(d)
-}
-
-export function asDisplayRange(e: EventLike, tz: string) {
-  if (!e.start_date) return { startDate: '', startTime: '', endDate: '', endTime: '' }
-  const s = utcDateFromParts(e.start_date, e.start_time)
-  const eDate = e.end_date ?? e.start_date
-  const end = utcDateFromParts(eDate, e.end_time)
-
-  const startDate = fmt(s, tz, { year: 'numeric', month: '2-digit', day: '2-digit' })
-  const endDate = fmt(end, tz, { year: 'numeric', month: '2-digit', day: '2-digit' })
-
-  if (e.all_day || (e.start_time == null && e.end_time == null)) {
-    return { startDate, startTime: '', endDate, endTime: '' }
-  }
-
-  const startTime = fmt(s, tz, { hour: '2-digit', minute: '2-digit', hour12: true })
-  const endTime = fmt(end, tz, { hour: '2-digit', minute: '2-digit', hour12: true })
-
-  return { startDate, startTime, endDate, endTime }
-}
-
-export function toIsoLocalDateInTz(dateStr: string, timeStr: string | null, tz: string) {
-  const d = utcDateFromParts(dateStr, timeStr)
-  const y = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric' }).format(d)
-  const m = pad(Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, month: '2-digit' }).format(d)))
-  const da = pad(Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, day: '2-digit' }).format(d)))
-  return `${y}-${m}-${da}`
+export function getDeviceTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 }
