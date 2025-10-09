@@ -68,10 +68,9 @@
   padding: 8px 10px;
   font-size: 0.95rem;
   width: 100%;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
-/* Dropdowns */
 .field-group.full select {
   appearance: none;
   background-image: var(--dropdown-icon);
@@ -86,7 +85,6 @@
   color: var(--text-primary);
 }
 
-/* dark/light mode fallback */
 :root {
   --bg-primary: #000;
   --bg-secondary: #111;
@@ -113,36 +111,48 @@
   --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* ✅ FIX: Light mode textboxes readable */
+.event-confirmation-page.light-mode {
+  --bg-primary: #fff;
+  --bg-secondary: #f6f6f6;
+  --input-bg: #fff;
+  --text-primary: #000;
+  --text-secondary: #333;
+  --border-color: #ccc;
+  --accent-color: #007aff;
+  --error-bg: #ffe5e5;
+  --error: #b00020;
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
 .light-mode .field-group.full input,
 .light-mode .field-group.full select,
-.light-mode .field-group.full textarea {
-  background-color: #fff;
-  color: #000;
-  border: 1px solid #ccc;
+.light-mode .field-group.full textarea,
+.event-confirmation-page.light-mode .field-group.full input,
+.event-confirmation-page.light-mode .field-group.full select,
+.event-confirmation-page.light-mode .field-group.full textarea {
+  background-color: #fff !important;
+  color: #000 !important;
+  border-color: #ccc !important;
 }
 
-.light-mode .event-card {
-  background-color: #f9f9f9;
-  border-color: #ddd;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+.light-mode .field-group.full select,
+.light-mode .field-group.full option,
+.event-confirmation-page.light-mode .field-group.full select,
+.event-confirmation-page.light-mode .field-group.full option {
+  background-color: #fff !important;
+  color: #000 !important;
 }
 
-.light-mode .confirmation-header h1 {
-  color: #000;
+.light-mode ::placeholder,
+.event-confirmation-page.light-mode ::placeholder {
+  color: #666;
 }
 
-.light-mode .confirmation-header p {
-  color: #444;
-}
-
-/* textarea */
 .field-group.full textarea {
   resize: vertical;
   min-height: 90px;
 }
 
-/* Split fields */
 .split-fields {
   display: flex;
   gap: 10px;
@@ -152,7 +162,6 @@
   flex: 1;
 }
 
-/* Slider controls */
 .slider-group {
   display: flex;
   justify-content: space-between;
@@ -166,7 +175,6 @@
   color: var(--text-secondary);
 }
 
-/* Switch */
 .switch {
   position: relative;
   display: inline-block;
@@ -220,7 +228,6 @@
   padding-left: 4px;
 }
 
-/* Buttons */
 .remove-btn {
   align-self: flex-end;
   padding: 10px 18px;
@@ -234,7 +241,6 @@
   margin-bottom: 24px;
 }
 
-/* Errors */
 .confirmation-error {
   padding: 12px;
   background-color: var(--error-bg);
@@ -244,7 +250,6 @@
   margin-bottom: 24px;
 }
 
-/* Actions */
 .confirmation-actions {
   display: flex;
   gap: 16px;
@@ -264,7 +269,6 @@
   gap: 8px;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   .split-fields {
     flex-direction: column;
