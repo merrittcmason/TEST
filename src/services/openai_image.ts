@@ -115,7 +115,7 @@ Analyze text across multiple pages and output valid JSON.
 7. If no recurrence is visible, set is_recurring=false and recurrence_rule=null.
 8. If recurring is implied, fill is_recurring=true and recurrence_rule like "DAILY", "WEEKLY", etc.
 9. If event's that look like assignments or due dates and have no explicit times, set start_time = "11:00" and end_time = "11:59". Do not infer or create time ranges unless explicitly shown.
-10. Avoid duplicates. Normalize event names in title case.
+10. Avoid duplicate events with same date and time. Normalize event names in title case.
 11. If multiple tasks appear on the same line or separated by “&”, commas, or semicolons, split them into individual events, each preserving the date.
 12. If the connected parts include different activity types (e.g. "Lab", "Quiz", "Exam", "Test", "Discussion Board", "Assignment", "Practice Problems"), treat each as a separate event with the same date/time.
 13. If all connected parts are of the same type (e.g. "Practice Problems – Sections 1.1, 1.2, 1.3"), keep them together as a single event and preserve the section list in the title.
