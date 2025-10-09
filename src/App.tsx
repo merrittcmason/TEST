@@ -19,11 +19,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
   import.meta.env.VITE_SUPABASE_ANON_KEY!,
   {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   }
 );
 
@@ -37,49 +33,50 @@ function AppContent() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
+  const [initialFlow, setInitialFlow] = useState(true);
 
   useEffect(() => {
-    const runStartupFlow = async () => {
+    const startup = async () => {
       setStage('launch');
-      await new Promise(res => setTimeout(res, 900));
+      await new Promise(r => setTimeout(r, 1200));
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       if (session) {
         setStage('welcome');
-        await new Promise(res => setTimeout(res, 900));
+        await new Promise(r => setTimeout(r, 2500));
         setStage('landing');
       } else {
         setStage('auth');
       }
+      setInitialFlow(false);
     };
-    runStartupFlow();
+    startup();
   }, []);
 
   useEffect(() => {
     if (!authLoading && user) {
-      const fetchUser = async () => {
+      (async () => {
         const u = await DatabaseService.getUser(user.id);
         if (u?.name) setUserName(u.name);
-      };
-      fetchUser();
+      })();
     }
   }, [user, authLoading]);
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION') return;
+      if (initialFlow) return;
       if (session) {
         setStage('welcome');
-        await new Promise(res => setTimeout(res, 900));
+        await new Promise(r => setTimeout(r, 2500));
         setStage('landing');
       } else {
         setStage('launch');
-        await new Promise(res => setTimeout(res, 700));
+        await new Promise(r => setTimeout(r, 1000));
         setStage('auth');
       }
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [initialFlow]);
 
   const handleNavigate = (page: string) => setCurrentPage(page as Page);
   const handleDayClick = (date: Date) => setSelectedDate(date);
