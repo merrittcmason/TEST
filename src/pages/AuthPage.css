@@ -13,7 +13,7 @@
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  padding: 48px 32px 56px;
+  padding: 40px 32px 56px;
   box-shadow: var(--shadow-lg);
   position: relative;
   display: flex;
@@ -25,20 +25,35 @@
   text-align: center;
   font-size: 2rem;
   font-weight: 600;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   color: var(--text-primary);
+  position: relative;
+  padding-bottom: 16px;
+}
+
+.auth-title::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 60%;
+  height: 1px;
+  background-color: var(--border-color);
+  transform: translateX(-50%);
+  opacity: 0.7;
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
+  margin-top: 16px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .form-group label {
@@ -77,7 +92,7 @@
 .auth-divider {
   position: relative;
   text-align: center;
-  margin: 32px 0 24px;
+  margin: 28px 0 20px;
 }
 
 .auth-divider::before {
@@ -104,7 +119,7 @@
   align-items: stretch;
   justify-content: center;
   gap: 12px;
-  margin-bottom: 28px;
+  margin-bottom: 26px;
 }
 
 .oauth-btn {
@@ -148,7 +163,7 @@
 /* bottom link area */
 .auth-alt {
   position: absolute;
-  bottom: 14px;
+  bottom: 12px;
   left: 0;
   right: 0;
   text-align: center;
@@ -163,6 +178,7 @@
   height: 1px;
   background-color: var(--border-color);
   z-index: 0;
+  opacity: 0.8;
 }
 
 .link-btn {
