@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ModeProvider } from './contexts/ModeContext';
 import { LaunchScreen } from './components/LaunchScreen';
@@ -9,110 +9,86 @@ import { EventConfirmation } from './pages/EventConfirmation';
 import { SettingsPage } from './pages/SettingsPage';
 import { AccountPage } from './pages/AccountPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
+import { CompleteProfilePage } from './pages/CompleteProfilePage';
 import type { ParsedEvent } from './services/openai';
-import type { Database } from './lib/supabase';
+import { DatabaseService } from './services/database';
 import './styles/theme.css';
 
 type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
-type Event = Database['public']['Tables']['events']['Row'];
-
-const LAUNCH_MS = 2200;
-const WELCOME_MS = 2600;
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
-  const firstMount = useRef(true);
-  const prevUser = useRef<typeof user>(null);
-
-  const [ui, setUi] = useState<'launch' | 'welcome' | 'auth' | 'app'>('launch');
-  const [page, setPage] = useState<Page>('landing');
-
+  const [showLaunch, setShowLaunch] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [needsProfile, setNeedsProfile] = useState(false);
+  const [firstName, setFirstName] = useState('User');
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
-  const [userName, setUserName] = useState('User');
+  const [currentPage, setCurrentPage] = useState<Page>('landing');
 
   useEffect(() => {
-    if (authLoading) return;
-    if (firstMount.current) {
-      firstMount.current = false;
-      setUi('launch');
-      const t = setTimeout(() => {
-        if (user) {
-          setUserName(user.user_metadata?.name || user.email || 'User');
-          setUi('welcome');
-          const w = setTimeout(() => setUi('app'), WELCOME_MS);
-          return () => clearTimeout(w);
-        } else {
-          setUi('auth');
-        }
-      }, LAUNCH_MS);
-      return () => clearTimeout(t);
-    } else {
-      const was = prevUser.current;
-      const now = user;
-      if (!was && now) {
-        setUserName(now.user_metadata?.name || now.email || 'User');
-        setUi('welcome');
-        const w = setTimeout(() => setUi('app'), WELCOME_MS);
-        prevUser.current = now;
-        return () => clearTimeout(w);
-      }
-      if (was && !now) {
-        setUi('auth');
-      }
-    }
-    prevUser.current = user;
-  }, [authLoading, user]);
+    let mounted = true;
+    const run = async () => {
+      await new Promise(r => setTimeout(r, 900));
+      if (!mounted) return;
+      setShowLaunch(false);
+    };
+    run();
+    return () => { mounted = false; };
+  }, []);
 
-  const handleNavigate = (p: string) => setPage(p as Page);
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      if (!user) {
+        setNeedsProfile(false);
+        setShowWelcome(false);
+        return;
+      }
+      const u = await DatabaseService.getUser(user.id);
+      if (!mounted) return;
+      if (u?.first_name) setFirstName(u.first_name);
+      setNeedsProfile(!u?.profile_completed);
+      if (u?.profile_completed) {
+        setShowWelcome(true);
+        setTimeout(() => { if (mounted) setShowWelcome(false); }, 1600);
+      }
+    };
+    if (!authLoading) run();
+    return () => { mounted = false; };
+  }, [user, authLoading]);
+
+  const handleProfileDone = () => {
+    setNeedsProfile(false);
+    setShowWelcome(true);
+    setTimeout(() => setShowWelcome(false), 1600);
+  };
+
+  const handleNavigate = (page: string) => setCurrentPage(page as Page);
+
   const handleEventsExtracted = (events: ParsedEvent[]) => {
     setExtractedEvents(events);
-    setPage('eventConfirmation');
-    setUi('app');
-  };
-  const handleEventsConfirmed = () => {
-    setExtractedEvents([]);
-    setPage('landing');
-  };
-  const handleEventsCancelled = () => {
-    setExtractedEvents([]);
-    setPage('landing');
+    setCurrentPage('eventConfirmation');
   };
 
-  if (ui === 'launch') {
-    return <LaunchScreen onComplete={() => {}} />;
+  if (showLaunch) return <LaunchScreen onComplete={() => {}} />;
+
+  if (authLoading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}><div className="loading-spinner" /></div>;
+
+  if (!user) return <AuthPage />;
+
+  if (needsProfile) return <CompleteProfilePage onDone={handleProfileDone} />;
+
+  if (showWelcome) return <WelcomeScreen userName={firstName || 'User'} onComplete={() => setShowWelcome(false)} firstTime={false} />;
+
+  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
+    return <EventConfirmation events={extractedEvents} onConfirm={()=>{ setExtractedEvents([]); setCurrentPage('landing'); }} onCancel={()=>{ setExtractedEvents([]); setCurrentPage('landing'); }} />;
   }
 
-  if (ui === 'welcome') {
-    return <WelcomeScreen userName={userName} onComplete={() => setUi('app')} />;
-  }
+  if (currentPage === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
+  if (currentPage === 'account') return <AccountPage onNavigate={handleNavigate} />;
+  if (currentPage === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
 
-  if (ui === 'auth') {
-    return <AuthPage />;
-  }
-
-  if (ui === 'app') {
-    if (page === 'eventConfirmation' && extractedEvents.length > 0) {
-      return (
-        <EventConfirmation
-          events={extractedEvents}
-          onConfirm={handleEventsConfirmed}
-          onCancel={handleEventsCancelled}
-        />
-      );
-    }
-    if (page === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
-    if (page === 'account') return <AccountPage onNavigate={handleNavigate} />;
-    if (page === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
-    return (
-      <LandingPage
-        onNavigate={handleNavigate}
-        onDateClick={() => {}}
-        onEventsExtracted={handleEventsExtracted}
-      />
-    );
-  }
-
-  return null;
+  return <LandingPage onNavigate={handleNavigate} onDateClick={()=>{}} onEventsExtracted={handleEventsExtracted} />;
 }
 
 export default function App() {
