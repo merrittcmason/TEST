@@ -1,8 +1,7 @@
-/* src/pages/SettingsPage.css */
 .settings-page {
   min-height: 100vh;
   background-color: var(--bg-primary);
-  padding-bottom: 120px;
+  padding-bottom: 96px;
 }
 
 .settings-container {
@@ -33,26 +32,26 @@
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 24px;
+  padding: 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+}
+
+.settings-card .setting-item + .setting-item {
+  border-top: 1px solid var(--border-light);
 }
 
 .setting-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border-light);
-  padding: 12px 0;
-}
-
-.setting-item:last-child {
-  border-bottom: none;
+  padding: 14px 0;
 }
 
 .setting-info {
   flex: 1;
+  min-width: 220px;
+  margin-right: 16px;
 }
 
 .setting-label {
@@ -80,7 +79,7 @@
   color: var(--text-primary);
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   cursor: pointer;
 }
 
@@ -91,15 +90,6 @@
 .setting-select:focus {
   outline: none;
   border-color: var(--accent-primary);
-}
-
-.setting-summary {
-  margin-top: 8px;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
 .theme-selector {
@@ -116,7 +106,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-secondary);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
   background: none;
   border: none;
   cursor: pointer;
@@ -124,7 +114,7 @@
 
 .theme-option.active {
   color: var(--bg-primary);
-  background-color: var(--accent-primary);
+  background-color: var(--text-primary);
 }
 
 .toggle-switch {
@@ -241,7 +231,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .delete-tab.active {
@@ -309,72 +299,82 @@
   font-size: 0.75rem;
 }
 
-.save-changes-pill {
+.save-changes-wrap {
   position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  padding: 14px 28px;
-  min-width: 360px;
-  border-radius: 999px;
-  border: 1px solid;
-  font-weight: 600;
-  font-size: 1rem;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  opacity: 0;
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  display: flex;
+  justify-content: center;
   z-index: 1100;
+  pointer-events: none;
 }
 
-.save-changes-pill.visible {
-  opacity: 1;
+.save-changes-pill {
+  display: none;
+  min-width: 360px;
+  max-width: 90vw;
+  padding: 14px 28px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 1rem;
+  text-align: center;
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.15s ease, opacity 0.15s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
   pointer-events: auto;
 }
 
-[data-theme='light'] .save-changes-pill {
-  background: #000000;
-  color: #ffffff;
-  border-color: #000000;
+.save-changes-pill.show {
+  display: inline-block;
 }
 
-[data-theme='light'] .save-changes-pill:hover {
-  transform: translateX(-50%) scale(1.02);
+.save-changes-pill:active {
+  transform: translateY(1px);
+}
+
+[data-theme='light'] .save-changes-pill {
+  background-color: #111;
+  color: #fff;
+  border-color: #111;
 }
 
 [data-theme='dark'] .save-changes-pill {
-  background: #ffffff;
-  color: #000000;
-  border-color: #ffffff;
-}
-
-[data-theme='dark'] .save-changes-pill:hover {
-  transform: translateX(-50%) scale(1.02);
+  background-color: #fff;
+  color: #000;
+  border-color: #fff;
 }
 
 @media (max-width: 768px) {
-  .settings-page {
-    padding-bottom: 140px;
+  .settings-container {
+    padding: 80px 16px 24px;
   }
+
   .setting-item {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
   }
+
   .setting-select {
     width: 100%;
   }
+
   .theme-selector {
     width: 100%;
   }
+
   .theme-option {
     flex: 1;
     text-align: center;
   }
+
   .delete-mode-tabs {
     flex-direction: column;
   }
+
   .save-changes-pill {
-    min-width: 260px;
-    width: calc(100% - 32px);
+    min-width: 280px;
+    width: calc(100vw - 32px);
   }
 }
