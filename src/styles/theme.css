@@ -34,6 +34,11 @@
   --gradient-subtle: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
   --glass-bg: rgba(17, 17, 17, 0.7);
   --glass-border: rgba(255, 255, 255, 0.1);
+
+  --input-bg: #1a1a1a;
+
+  --scrollbar-thumb: rgba(255,255,255,.25);
+  --scrollbar-thumb-hover: rgba(255,255,255,.4);
 }
 
 :root[data-theme='light'] {
@@ -72,6 +77,11 @@
   --gradient-subtle: linear-gradient(180deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0) 100%);
   --glass-bg: rgba(245, 245, 245, 0.7);
   --glass-border: rgba(0, 0, 0, 0.1);
+
+  --input-bg: #ffffff;
+
+  --scrollbar-thumb: rgba(0,0,0,.25);
+  --scrollbar-thumb-hover: rgba(0,0,0,.4);
 }
 
 * {
@@ -290,14 +300,8 @@ a:hover {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .slide-in-right {
@@ -305,16 +309,13 @@ a:hover {
 }
 
 @keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.25) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -328,14 +329,14 @@ a:hover {
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: rgba(255,255,255,.25);
+  background-color: var(--scrollbar-thumb);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255,255,255,.4);
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 *::-webkit-scrollbar-corner {
