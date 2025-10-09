@@ -13,7 +13,7 @@
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  padding: 48px 32px 60px;
+  padding: 48px 32px 56px;
   box-shadow: var(--shadow-lg);
   position: relative;
   display: flex;
@@ -104,7 +104,7 @@
   align-items: stretch;
   justify-content: center;
   gap: 12px;
-  margin-bottom: 40px;
+  margin-bottom: 28px;
 }
 
 .oauth-btn {
@@ -148,13 +148,25 @@
 /* bottom link area */
 .auth-alt {
   position: absolute;
-  bottom: 18px;
+  bottom: 14px;
   left: 0;
   right: 0;
   text-align: center;
 }
 
+.auth-alt::before {
+  content: '';
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  top: 50%;
+  height: 1px;
+  background-color: var(--border-color);
+  z-index: 0;
+}
+
 .link-btn {
+  position: relative;
   background: none;
   border: none;
   font-size: 0.8rem;
@@ -164,6 +176,9 @@
   text-underline-offset: 3px;
   cursor: pointer;
   transition: color 0.2s ease, opacity 0.2s ease;
+  z-index: 1;
+  background-color: var(--bg-secondary);
+  padding: 0 12px;
 }
 
 .link-btn:hover {
