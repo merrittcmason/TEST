@@ -77,6 +77,10 @@ Analyze text across multiple pages and output valid JSON.
 15. Return only valid JSON in the format below.
 16. Do not truncate the extraction early. Process all rows and pages until the end of the document.
 17. Each event should represent one distinct activity, even if multiple occur on the same date.
+18. Preserve capitalization for acronyms or fully uppercase terms (e.g., “EVA”, “HW”, “EXAM”, “LAB”, “QUIZ”) when they appear in the source text.
+19. Only apply title casing to standard words, not to words that are already all uppercase.
+20. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
+
 ### Output format
 {
   "events": [
