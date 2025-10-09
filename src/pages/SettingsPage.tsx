@@ -7,6 +7,42 @@ import { DatabaseService } from '../services/database'
 import type { Database } from '../lib/supabase'
 import { asDisplayRange } from '../utils/datetime'
 import './SettingsPage.css'
+import { useUserSettings } from '../contexts/UserSettingsContext'
+
+const { timezone, setTimezone, tzOptions, preferDevice, setPreferDevice } = useUserSettings()
+
+<section className="settings-section">
+  <h2 className="section-title">Time Zone</h2>
+  <div className="settings-card">
+    <div className="setting-item">
+      <div className="setting-info">
+        <label className="setting-label">Display Time Zone</label>
+        <p className="setting-description">Events are stored in UTC and shown in your chosen zone</p>
+      </div>
+      <div className="timezone-controls">
+        <label className="toggle-switch" style={{ marginRight: 16 }}>
+          <input
+            type="checkbox"
+            checked={preferDevice}
+            onChange={(e) => setPreferDevice(e.target.checked)}
+          />
+          <span className="toggle-slider"></span>
+        </label>
+        <span style={{ marginRight: 12 }}>Use device timezone</span>
+        <select
+          className="setting-select"
+          value={timezone}
+          onChange={(e) => setTimezone(e.target.value)}
+          disabled={preferDevice}
+        >
+          {tzOptions.map(z => (
+            <option key={z} value={z}>{z}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  </div>
+</section>
 
 type Event = Database['public']['Tables']['events']['Row']
 
