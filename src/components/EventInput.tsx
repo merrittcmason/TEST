@@ -305,7 +305,28 @@ export function EventInput({ onEventsExtracted, onResumeDrafts }: EventInputProp
           )}
         </div>
       </div>
-      {error && <div className="input-error">{error}</div>}
+
+      {error && (
+        <>
+          <div className="error-overlay" onClick={() => setError('')} />
+          <div
+            className="input-error enhanced"
+            onClick={(e) => {
+              e.stopPropagation();
+              const el = e.currentTarget;
+              el.classList.remove('shake');
+              void el.offsetWidth;
+              el.classList.add('shake');
+            }}
+          >
+            <span>{error}</span>
+            <button className="error-close-btn" onClick={() => setError('')}>
+              ×
+            </button>
+          </div>
+        </>
+      )}
+
       <input
         type="file"
         id="file-doc-input"
