@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ModeProvider } from './contexts/ModeContext';
 import { LaunchScreen } from './components/LaunchScreen';
@@ -13,75 +13,106 @@ import type { ParsedEvent } from './services/openai';
 import type { Database } from './lib/supabase';
 import { DatabaseService } from './services/database';
 import './styles/theme.css';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL!,
-  import.meta.env.VITE_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
 
 type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
 type Event = Database['public']['Tables']['events']['Row'];
 
+const LAUNCH_DURATION = 2500;
+const WELCOME_DURATION = 3200;
+
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
+
   const [stage, setStage] = useState<'launch' | 'auth' | 'welcome' | 'landing'>('launch');
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
-  const [launchComplete, setLaunchComplete] = useState(false);
 
-  const hasShownWelcomeRef = useRef(false);
-  const lastUserRef = useRef<string | null>(null);
-
-  const LAUNCH_DURATION = 2500;
-  const WELCOME_DURATION = 3000;
+  const launchTimerRef = useRef<number | null>(null);
+  const welcomeTimerRef = useRef<number | null>(null);
+  const launchTimerFiredRef = useRef(false);
+  const lastUserIdRef = useRef<string | null>(null);
+  const hasShownWelcomeForThisUserRef = useRef(false);
 
   useEffect(() => {
-    const started = sessionStorage.getItem('launchedOnce');
-    if (!started) {
-      setStage('launch');
-      sessionStorage.setItem('launchedOnce', 'true');
-      setTimeout(() => {
-        setLaunchComplete(true);
-      }, LAUNCH_DURATION);
-    } else {
-      setLaunchComplete(true);
-    }
+    setStage('launch');
+    launchTimerRef.current = window.setTimeout(() => {
+      launchTimerFiredRef.current = true;
+      if (user) {
+        hasShownWelcomeForThisUserRef.current = false;
+        setStage('welcome');
+        welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
+      } else {
+        setStage('auth');
+      }
+    }, LAUNCH_DURATION);
+
+    return () => {
+      if (launchTimerRef.current) {
+        clearTimeout(launchTimerRef.current);
+        launchTimerRef.current = null;
+      }
+      if (welcomeTimerRef.current) {
+        clearTimeout(welcomeTimerRef.current);
+        welcomeTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
-    if (!authLoading && user && launchComplete) {
-      if (lastUserRef.current !== user.id) {
-        lastUserRef.current = user.id;
-        hasShownWelcomeRef.current = false;
+    if (!user || authLoading) return;
+    (async () => {
+      try {
+        const profile = await DatabaseService.getUser(user.id);
+        if ((profile as any)?.name) setUserName((profile as any).name as string);
+        else if ((user as any)?.user_metadata?.name) setUserName((user as any).user_metadata.name as string);
+        else if (user.email) setUserName(user.email.split('@')[0]);
+        else setUserName('User');
+      } catch {
+        if (user.email) setUserName(user.email.split('@')[0]);
       }
+    })();
+  }, [user, authLoading]);
 
-      if (!hasShownWelcomeRef.current) {
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user) {
+      lastUserIdRef.current = null;
+      hasShownWelcomeForThisUserRef.current = false;
+      if (stage !== 'launch') {
+        setStage('auth');
+      }
+      return;
+    }
+
+    if (lastUserIdRef.current !== user.id) {
+      lastUserIdRef.current = user.id;
+      hasShownWelcomeForThisUserRef.current = false;
+    }
+
+    if (stage === 'auth' && user) {
+      if (!hasShownWelcomeForThisUserRef.current) {
         setStage('welcome');
-        hasShownWelcomeRef.current = true;
-        setTimeout(() => setStage('landing'), WELCOME_DURATION);
+        hasShownWelcomeForThisUserRef.current = true;
+        if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
+        welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
       } else {
         setStage('landing');
       }
-
-      (async () => {
-        try {
-          const data = await DatabaseService.getUser(user.id);
-          if (data?.name) setUserName(data.name);
-        } catch {}
-      })();
-    } else if (!authLoading && !user && launchComplete) {
-      setStage('auth');
     }
-  }, [user, authLoading, launchComplete]);
+
+    if (stage === 'launch' && launchTimerFiredRef.current && user) {
+      if (!hasShownWelcomeForThisUserRef.current) {
+        setStage('welcome');
+        hasShownWelcomeForThisUserRef.current = true;
+        if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
+        welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
+      } else {
+        setStage('landing');
+      }
+    }
+  }, [user, authLoading, stage]);
 
   const handleNavigate = (page: string) => setCurrentPage(page as Page);
   const handleEventsExtracted = (events: ParsedEvent[]) => {
@@ -99,11 +130,10 @@ function AppContent() {
 
   if (stage === 'launch') return <LaunchScreen />;
   if (stage === 'auth') return <AuthPage />;
-  if (stage === 'welcome' && user)
-    return <WelcomeScreen userName={userName} onComplete={() => setStage('landing')} />;
+  if (stage === 'welcome' && user) return <WelcomeScreen userName={userName} onComplete={() => setStage('landing')} />;
 
   if (stage === 'landing' && user) {
-    if (currentPage === 'eventConfirmation' && extractedEvents.length > 0)
+    if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
       return (
         <EventConfirmation
           events={extractedEvents}
@@ -111,6 +141,7 @@ function AppContent() {
           onCancel={handleEventsCancelled}
         />
       );
+    }
     if (currentPage === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
     if (currentPage === 'account') return <AccountPage onNavigate={handleNavigate} />;
     if (currentPage === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
@@ -123,7 +154,11 @@ function AppContent() {
     );
   }
 
-  return null;
+  return (
+    <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
+      <div className="loading-spinner" />
+    </div>
+  );
 }
 
 export default function App() {
