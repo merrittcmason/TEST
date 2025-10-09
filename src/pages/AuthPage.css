@@ -13,8 +13,9 @@
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  padding: 48px 32px;
+  padding: 48px 32px 40px;
   box-shadow: var(--shadow-lg);
+  position: relative;
 }
 
 .auth-title {
@@ -23,33 +24,6 @@
   font-weight: 600;
   margin-bottom: 32px;
   color: var(--text-primary);
-}
-
-.auth-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 32px;
-  background-color: var(--bg-tertiary);
-  border-radius: 8px;
-  padding: 4px;
-}
-
-.auth-tab {
-  flex: 1;
-  padding: 12px;
-  border-radius: 6px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  color: var(--text-secondary);
-  text-align: center;
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-}
-
-.auth-tab.active {
-  background-color: var(--accent-primary);
-  color: var(--bg-primary);
 }
 
 .auth-form {
@@ -81,17 +55,16 @@
 }
 
 [data-theme='light'] .auth-error {
-  background-color: #fdecea; /* soft pale red for light mode */
-  color: #611a15; /* dark red text */
+  background-color: #fdecea;
+  color: #611a15;
   border-color: #f44336;
 }
 
 [data-theme='dark'] .auth-error {
-  background-color: rgba(255, 99, 71, 0.15); /* soft transparent red glow */
-  color: #ffb3b3; /* readable light red text */
+  background-color: rgba(255, 99, 71, 0.15);
+  color: #ffb3b3;
   border-color: rgba(255, 99, 71, 0.5);
 }
-
 
 .auth-submit {
   width: 100%;
@@ -164,4 +137,32 @@
 
 [data-theme='dark'] .oauth-btn:hover {
   background-color: var(--bg-hover);
+}
+
+/* --- Create/Sign-in switch link --- */
+.auth-alt {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.link-btn:hover {
+  color: var(--accent-primary);
+  opacity: 0.9;
+}
+
+.link-btn:active {
+  opacity: 0.7;
 }
