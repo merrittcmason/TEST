@@ -18,13 +18,11 @@ function scorePassword(pw: string) {
 export function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
 
-  // sign in (original)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [signinError, setSigninError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // sign up (new card)
   const [username, setUsername] = useState('');
   const [email2, setEmail2] = useState('');
   const [pw1, setPw1] = useState('');
@@ -94,25 +92,16 @@ export function AuthPage() {
   return (
     <div className="auth-page">
       <div className={`auth-container ${mode === 'signup' ? 'signup' : 'signin'}`}>
-        <h1 className="auth-title">Calendar Pilot</h1>
-        <div className="auth-title-divider" />
+        {mode === 'signup' && (
+          <div className="back-top">
+            <button type="button" className="back-btn" onClick={() => setMode('signin')}>
+              <span className="back-icon">←</span>
+              <span>Back to sign in</span>
+            </button>
+          </div>
+        )}
 
-        <div className="auth-tabs">
-          <button
-            className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
-            type="button"
-            onClick={() => setMode('signin')}
-          >
-            Sign In
-          </button>
-          <button
-            className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
-            type="button"
-            onClick={() => setMode('signup')}
-          >
-            Create Account
-          </button>
-        </div>
+        <h1 className="auth-title">Calendar Pilot</h1>
 
         {mode === 'signin' ? (
           <>
@@ -192,16 +181,13 @@ export function AuthPage() {
               </button>
             </div>
 
-            <div className="create-account-divider">
-              <span>
-                <button
-                  type="button"
-                  className="create-account-link"
-                  onClick={() => setMode('signup')}
-                >
+            <div className="auth-alt">
+              <div className="create-account-row">
+                <span className="create-account-text">Don’t have an account?</span>
+                <button type="button" className="link-btn" onClick={() => setMode('signup')}>
                   Create an account
                 </button>
-              </span>
+              </div>
             </div>
           </>
         ) : (
@@ -360,18 +346,6 @@ export function AuthPage() {
                 </svg>
                 Apple
               </button>
-            </div>
-
-            <div className="create-account-divider">
-              <span>
-                <button
-                  type="button"
-                  className="create-account-link"
-                  onClick={() => setMode('signin')}
-                >
-                  Back to sign in
-                </button>
-              </span>
             </div>
           </>
         )}
