@@ -74,13 +74,13 @@ Analyze text across multiple pages and output valid JSON.
 12. If the connected parts include different activity types (e.g. "Lab", "Quiz", "Exam", "Test", "Discussion Board", "Assignment", "Practice Problems"), treat each as a separate event with the same date/time.
 13. If all connected parts are of the same type (e.g. "Practice Problems – Sections 1.1, 1.2, 1.3"), keep them together as a single event and preserve the section list in the title.
 14. Connectors such as "&", "and", "plus", or semicolons signal that different event groups may appear together — check for differences in type words before deciding whether to split.
-15. Return only valid JSON in the format below.
-16. Do not truncate the extraction early. Process all rows and pages until the end of the document.
-17. Each event should represent one distinct activity, even if multiple occur on the same date.
-18. Preserve capitalization for acronyms or fully uppercase terms (e.g., “EVA”, “HW”, “EXAM”, “LAB”, “QUIZ”) when they appear in the source text.
-19. Only apply title casing to standard words, not to words that are already all uppercase.
-20. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
-
+15. Do not truncate the extraction early. Process all rows and pages until the end of the document.
+16. Each event should represent one distinct activity, even if multiple occur on the same date.
+17. Preserve capitalization for acronyms or fully uppercase terms (e.g., “EVA”, “HW”, “EXAM”, “LAB”, “QUIZ”) when they appear in the source text.
+18. Only apply title casing to standard words, not to words that are already all uppercase.
+19. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
+20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
+21. Return only valid JSON in the format below.
 ### Output format
 {
   "events": [
