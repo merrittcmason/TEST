@@ -601,3 +601,25 @@
   background-position: center;
   background-size: 12px 12px;
 }
+.auth-container.signup .terms-item input[type="checkbox"],
+.auth-container.mode-signup .terms-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #000;
+  border: 1.5px solid var(--border-color);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-container.signup .terms-item input[type="checkbox"]:checked,
+.auth-container.mode-signup .terms-item input[type="checkbox"]:checked {
+  background: var(--success);
+  border-color: var(--success);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+}
