@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.tsx
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { AuthService } from '../services/auth';
@@ -18,13 +19,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AuthService.getCurrentUser().then((user) => {
-      setUser(user);
+    AuthService.getCurrentUser().then((u) => {
+      setUser(u);
       setLoading(false);
     });
 
-    const { data: { subscription } } = AuthService.onAuthStateChange((_event, user) => {
-      setUser(user);
+    const { data: { subscription } } = AuthService.onAuthStateChange((_event, u) => {
+      setUser(u);
       setLoading(false);
     });
 
@@ -34,14 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, name?: string) => {
+    sessionStorage.setItem('skipLaunchOnce', '1');
     await AuthService.signUp(email, password, name);
   };
 
   const signIn = async (email: string, password: string) => {
+    sessionStorage.setItem('skipLaunchOnce', '1');
     await AuthService.signIn(email, password);
   };
 
   const signInWithOAuth = async (provider: 'google' | 'github' | 'apple') => {
+    sessionStorage.setItem('skipLaunchOnce', '1');
     await AuthService.signInWithOAuth(provider);
   };
 
@@ -57,9 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 }
