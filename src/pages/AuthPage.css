@@ -305,6 +305,7 @@
   z-index: 1;
   background-color: var(--bg-secondary);
   padding: 0 10px;
+  margin: 0 auto;
 }
 
 .create-account-text {
@@ -505,6 +506,52 @@
 
 .signup-actions {
   margin-top: 6px;
+}
+
+.auth-container.signup .auth-alt,
+.auth-container.mode-signup .auth-alt {
+  display: none;
+}
+
+.back-top {
+  display: none;
+}
+
+.auth-container.signup .back-top,
+.auth-container.mode-signup .back-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+[data-theme='dark'] .back-btn {
+  background: var(--bg-tertiary);
+}
+
+.back-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+.back-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
 }
 
 @media (max-width: 520px) {
