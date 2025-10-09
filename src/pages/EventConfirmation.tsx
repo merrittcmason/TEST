@@ -26,25 +26,31 @@ interface EditableEvent {
   description: string | null
 }
 
+function toEditable(e: any, i: number): EditableEvent {
+  const today = new Date().toISOString().split('T')[0]
+  const allDay = Boolean(e?.all_day ?? false)
+  return {
+    tempId: `temp-${i}-${e?.id ?? Date.now()}`,
+    title: (e?.title ?? e?.name ?? e?.event_name ?? '').toString(),
+    location: (e?.location ?? null) as string | null,
+    all_day: allDay,
+    start_date: (e?.start_date ?? today) as string,
+    start_time: (e?.start_time ?? (allDay ? null : '09:00')) as string | null,
+    end_date: (e?.end_date ?? e?.start_date ?? today) as string,
+    end_time: (e?.end_time ?? (allDay ? null : '10:00')) as string | null,
+    is_recurring: Boolean(e?.is_recurring ?? false),
+    recurrence_rule: (e?.recurrence_rule ?? null) as string | null,
+    label: (e?.label ?? null) as string | null,
+    tag: (e?.tag ?? null) as string | null,
+    description: (e?.description ?? null) as string | null
+  }
+}
+
 export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirmationProps) {
   const { user } = useAuth()
   const { mode } = useMode()
   const [editableEvents, setEditableEvents] = useState<EditableEvent[]>(
-    events.map((e, i) => ({
-      tempId: `temp-${i}`,
-      title: e.title || '',
-      location: e.location || '',
-      all_day: e.all_day || false,
-      start_date: e.start_date || new Date().toISOString().split('T')[0],
-      start_time: e.start_time || '09:00',
-      end_date: e.end_date || new Date().toISOString().split('T')[0],
-      end_time: e.end_time || '10:00',
-      is_recurring: e.is_recurring || false,
-      recurrence_rule: e.recurrence_rule || '',
-      label: e.label || '',
-      tag: e.tag || '',
-      description: e.description || ''
-    }))
+    (events ?? []).map((e, i) => toEditable(e, i))
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -52,7 +58,11 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   const [globalLabel, setGlobalLabel] = useState('')
 
   useEffect(() => {
-    if (applyLabelToAll && globalLabel) {
+    setEditableEvents((events ?? []).map((e, i) => toEditable(e, i)))
+  }, [events])
+
+  useEffect(() => {
+    if (applyLabelToAll && globalLabel !== '') {
       setEditableEvents(prev => prev.map(e => ({ ...e, label: globalLabel })))
     }
   }, [applyLabelToAll, globalLabel])
@@ -62,7 +72,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
       prev.map(e => (e.tempId === tempId ? { ...e, [field]: value } : e))
     )
     if (field === 'label' && applyLabelToAll) {
-      setGlobalLabel(value || '')
+      setGlobalLabel(value ?? '')
     }
   }
 
@@ -92,7 +102,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
 
   const validateEvents = () => {
     for (const e of editableEvents) {
-      if (!e.title.trim()) throw new Error('Each event must have a title')
+      if (!(e.title ?? '').toString().trim()) throw new Error('Each event must have a title')
       if (!e.start_date || !e.end_date) throw new Error('Each event must have start and end dates')
     }
   }
@@ -186,7 +196,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 <label>Title</label>
                 <input
                   type="text"
-                  value={event.title}
+                  value={event.title ?? ''}
                   onChange={e => handleFieldChange(event.tempId, 'title', e.target.value)}
                   placeholder="Enter event title"
                 />
@@ -196,7 +206,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 <label>Location</label>
                 <input
                   type="text"
-                  value={event.location || ''}
+                  value={event.location ?? ''}
                   onChange={e => handleFieldChange(event.tempId, 'location', e.target.value)}
                   placeholder="e.g., Online or LY 324"
                 />
@@ -207,7 +217,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 <label className="switch">
                   <input
                     type="checkbox"
-                    checked={event.all_day}
+                    checked={!!event.all_day}
                     onChange={e => handleFieldChange(event.tempId, 'all_day', e.target.checked)}
                   />
                   <span className="slider"></span>
@@ -219,13 +229,13 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 <div className="split-fields">
                   <input
                     type="date"
-                    value={event.start_date || ''}
+                    value={event.start_date ?? ''}
                     onChange={e => handleFieldChange(event.tempId, 'start_date', e.target.value)}
                   />
                   {!event.all_day && (
                     <input
                       type="time"
-                      value={event.start_time || ''}
+                      value={event.start_time ?? ''}
                       onChange={e => handleFieldChange(event.tempId, 'start_time', e.target.value)}
                     />
                   )}
@@ -237,13 +247,13 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 <div className="split-fields">
                   <input
                     type="date"
-                    value={event.end_date || ''}
+                    value={event.end_date ?? ''}
                     onChange={e => handleFieldChange(event.tempId, 'end_date', e.target.value)}
                   />
                   {!event.all_day && (
                     <input
                       type="time"
-                      value={event.end_time || ''}
+                      value={event.end_time ?? ''}
                       onChange={e => handleFieldChange(event.tempId, 'end_time', e.target.value)}
                     />
                   )}
@@ -253,11 +263,11 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
               <div className="field-group full">
                 <label>Recurring?</label>
                 <select
-                  value={event.recurrence_rule || ''}
+                  value={event.recurrence_rule ?? ''}
                   onChange={e => {
                     const val = e.target.value
                     handleFieldChange(event.tempId, 'is_recurring', val !== '')
-                    handleFieldChange(event.tempId, 'recurrence_rule', val)
+                    handleFieldChange(event.tempId, 'recurrence_rule', val || null)
                   }}
                 >
                   <option value="">Doesn't Reoccur</option>
@@ -275,34 +285,33 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
                 )}
               </div>
 
-           <div className="field-group full">
-  <label>Label</label>
-  <input
-    type="text"
-    value={event.label || ''}
-    onChange={e => handleFieldChange(event.tempId, 'label', e.target.value)}
-    placeholder="e.g., CS101, BIO-200"
-  />
-</div>
+              <div className="field-group full">
+                <label>Label</label>
+                <input
+                  type="text"
+                  value={event.label ?? ''}
+                  onChange={e => handleFieldChange(event.tempId, 'label', e.target.value)}
+                  placeholder="e.g., CS101, BIO-200"
+                />
+              </div>
 
-<div className="slider-group apply-to-all">
-  <label>Apply Label to All</label>
-  <label className="switch">
-    <input
-      type="checkbox"
-      checked={applyLabelToAll}
-      onChange={e => setApplyLabelToAll(e.target.checked)}
-    />
-    <span className="slider"></span>
-  </label>
-</div>
-
+              <div className="slider-group apply-to-all">
+                <label>Apply Label to All</label>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={applyLabelToAll}
+                    onChange={e => setApplyLabelToAll(e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+              </div>
 
               <div className="field-group full">
                 <label>Tag</label>
                 <input
                   type="text"
-                  value={event.tag || ''}
+                  value={event.tag ?? ''}
                   onChange={e => handleFieldChange(event.tempId, 'tag', e.target.value)}
                   placeholder="e.g., Class, Meeting"
                 />
@@ -311,7 +320,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
               <div className="field-group full">
                 <label>Description</label>
                 <textarea
-                  value={event.description || ''}
+                  value={event.description ?? ''}
                   onChange={e => handleFieldChange(event.tempId, 'description', e.target.value)}
                   placeholder="Enter details"
                 />
