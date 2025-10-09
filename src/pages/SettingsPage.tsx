@@ -473,9 +473,14 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
       )}
 
       {isDirty && (
-        <button className="save-changes-pill" onClick={handleSaveAll} disabled={saving}>
-          {saving ? 'Saving…' : 'Save Changes'}
-        </button>
+<button
+  className={`save-changes-pill ${isDirty ? 'show' : ''}`}
+  onClick={handleSaveAll}
+  disabled={saving || !isDirty}
+>
+  {saving ? 'Saving…' : 'Save Changes'}
+</button>
+
       )}
     </div>
   );
