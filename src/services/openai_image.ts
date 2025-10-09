@@ -127,10 +127,7 @@ Analyze text across multiple pages and output valid JSON.
 19. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
 20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
 21. Return only valid JSON in the format below.
-Anchor to numeric day cells:
-22. When parsing a month grid, locate the numeric day inside each cell and anchor events to the cell that contains
-23. If an event’s text overlaps two cells <50% each, choose the cell whose numeric day is closest to the text’s centroid; if still tied, choose the later date.
-24. Do not create an event on an empty neighboring day just because an item is near a border. Only emit events for cells where the overlap rule places them.
+
 
 
 ### Output format
