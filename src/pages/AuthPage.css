@@ -28,7 +28,7 @@
   margin-bottom: 20px;
   color: var(--text-primary);
   position: relative;
-  padding-bottom: 16px;
+  padding-bottom: 18px;
 }
 
 .auth-title::after {
@@ -36,11 +36,15 @@
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 60%;
-  height: 1px;
-  background-color: var(--border-color);
+  width: 65%;
+  height: 2px;
+  background-color: black;
   transform: translateX(-50%);
-  opacity: 0.7;
+  opacity: 1;
+}
+
+[data-theme='dark'] .auth-title::after {
+  background-color: white;
 }
 
 .auth-form {
