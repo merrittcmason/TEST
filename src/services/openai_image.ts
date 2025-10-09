@@ -22,19 +22,23 @@ export interface ParseResult {
   tokensUsed: number
 }
 
-function toTitleCase(s: string): string {
-  return (s || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .split(" ")
-    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+function toSmartTitleCase(s: string): string {
+  const words = (s || "").trim().replace(/\s+/g, " ").split(" ")
+  return words
+    .map(w => {
+      if (!w) return w
+      const bare = w.replace(/[^\w-]/g, "")
+      const isAcronym = /^[A-Z0-9\-]{2,}$/.test(bare)
+      if (isAcronym) return w.toUpperCase()
+      return w[0].toUpperCase() + w.slice(1).toLowerCase()
+    })
     .join(" ")
 }
 
 function postNormalizeEvents(events: ParsedEvent[]): ParsedEvent[] {
   return (events || []).map(e => {
     let title = (e.title || "").trim()
-    title = toTitleCase(title).replace(/\s{2,}/g, " ")
+    title = toSmartTitleCase(title).replace(/\s{2,}/g, " ")
     if (title.length > 80) title = title.slice(0, 77).trimEnd() + "..."
     return { ...e, title }
   })
@@ -166,10 +170,7 @@ async function robustJsonParse(s: string): Promise<any> {
         model: "gpt-4o-mini",
         temperature: 0,
         input: [
-          {
-            role: "system",
-            content: "Fix this to be valid JSON matching { events: [...] }. Output only JSON."
-          },
+          { role: "system", content: "Fix this to be valid JSON matching { events: [...] }. Output only JSON." },
           { role: "user", content: s.slice(0, 8000) }
         ],
         text: { format: { type: "json_object" } }
@@ -184,36 +185,51 @@ async function robustJsonParse(s: string): Promise<any> {
   }
 }
 
+const IMAGE_EVENTS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    events: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          location: { type: ["string", "null"] },
+          all_day: { type: "boolean" },
+          start_date: { type: "string" },
+          start_time: { type: ["string", "null"] },
+          end_date: { type: ["string", "null"] },
+          end_time: { type: ["string", "null"] },
+          is_recurring: { type: ["boolean", "null"] },
+          recurrence_rule: { type: ["string", "null"] },
+          label: { type: ["string", "null"] },
+          tag: { type: ["string", "null"] },
+          description: { type: ["string", "null"] }
+        },
+        required: [
+          "title",
+          "location",
+          "all_day",
+          "start_date",
+          "start_time",
+          "end_date",
+          "end_time",
+          "is_recurring",
+          "recurrence_rule",
+          "label",
+          "tag",
+          "description"
+        ]
+      }
+    }
+  },
+  required: ["events"]
+}
+
 async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
   const userParts = images.map(url => ({ type: "input_image", image_url: url }))
-
-  const schema = {
-    type: "object",
-    properties: {
-      events: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            location: { type: ["string", "null"] },
-            all_day: { type: "boolean" },
-            start_date: { type: "string" },
-            start_time: { type: ["string", "null"] },
-            end_date: { type: ["string", "null"] },
-            end_time: { type: ["string", "null"] },
-            is_recurring: { type: ["boolean", "null"] },
-            recurrence_rule: { type: ["string", "null"] },
-            label: { type: ["string", "null"] },
-            tag: { type: ["string", "null"] },
-            description: { type: ["string", "null"] }
-          },
-          required: ["title", "start_date"]
-        }
-      }
-    },
-    required: ["events"]
-  }
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -225,7 +241,7 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userParts }
       ],
-      text: { format: { type: "json_schema", name: "calendar_events", schema } },
+      text: { format: { type: "json_schema", name: "calendar_events", schema: IMAGE_EVENTS_SCHEMA, strict: true } },
       max_output_tokens: MAX_TOKENS
     })
   })
