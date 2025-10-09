@@ -127,7 +127,8 @@ Analyze text across multiple pages and output valid JSON.
 19. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
 20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
 21. For duplicate events from information that spans multiple days, create one event that starts on the first day and ends on the last.
-21. Return only valid JSON in the format below.
+22. Apply rules to images aswell
+23. Return only valid JSON in the format below.
 ### Output format
 {
   "events": [
@@ -229,77 +230,8 @@ const IMAGE_EVENTS_SCHEMA = {
   required: ["events"]
 }
 
-type OCRWord = { text: string; x: number; y: number; w: number; h: number; conf: number }
-
-async function tesseractRecognizeWords(dataUrl: string): Promise<OCRWord[]> {
-  try {
-    const { createWorker, PSM } = await import("tesseract.js")
-    const worker = await createWorker()
-    await worker.loadLanguage("eng")
-    await worker.initialize("eng")
-    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO })
-    const { data }: any = await worker.recognize(dataUrl)
-    await worker.terminate()
-    const words: OCRWord[] = []
-    for (const w of data.words || []) {
-      const t = (w.text || "").trim()
-      if (!t) continue
-      const x0 = w.bbox?.x0 ?? 0
-      const y0 = w.bbox?.y0 ?? 0
-      const x1 = w.bbox?.x1 ?? x0
-      const y1 = w.bbox?.y1 ?? y0
-      const conf = typeof w.confidence === "number" ? w.confidence : 70
-      const ww = x1 - x0
-      const hh = y1 - y0
-      if (ww >= 5 && hh >= 7 && conf >= 55) words.push({ text: t, x: x0, y: y0, w: ww, h: hh, conf })
-    }
-    return words
-  } catch {
-    return []
-  }
-}
-
-function buildSevenColumns(imageWidth: number) {
-  const colW = imageWidth / 7
-  return Array.from({ length: 7 }, (_, i) => ({ idx: i, x0: Math.round(i * colW), x1: Math.round((i + 1) * colW) }))
-}
-
-function wordsInColumn(words: OCRWord[], x0: number, x1: number): OCRWord[] {
-  return words.filter(w => {
-    const cx = w.x + w.w / 2
-    return cx >= x0 && cx < x1
-  })
-}
-
-function hasNumericDay(words: OCRWord[]): boolean {
-  return words.some(w => /^\d{1,2}[),.]?$/.test(w.text))
-}
-
-function weekdayFromISO(isoDate: string): number | null {
-  const d = new Date(isoDate)
-  return isNaN(d.getTime()) ? null : d.getDay()
-}
-
-async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number; sundayLooksEmpty: boolean }> {
-  const userParts: any[] = images.map(url => ({ type: "input_image", image_url: url }))
-  let sundayLooksEmpty = false
-  try {
-    const preUrl = images[0]
-    const imgEl = await loadImage(preUrl)
-    const words = await tesseractRecognizeWords(preUrl)
-    const cols = buildSevenColumns(imgEl.naturalWidth || imgEl.width)
-    const sundayWords = wordsInColumn(words, cols[0].x0, cols[0].x1)
-    sundayLooksEmpty = !hasNumericDay(sundayWords)
-    const colSummary = cols.map((c, i) => {
-      const ws = wordsInColumn(words, c.x0, c.x1)
-      const days = ws.filter(w => /^\d{1,2}$/.test(w.text)).map(w => w.text)
-      return { col: i, day_numbers: Array.from(new Set(days)).slice(0, 10) }
-    })
-    userParts.unshift(
-      { type: "input_text", text: `Columns payload: ${JSON.stringify({ sundayLooksEmpty, columns: colSummary }).slice(0, 6000)}` },
-      { type: "input_text", text: sundayLooksEmpty ? "In this screenshot, the Sunday column appears empty (no numeric day). Do NOT assign any event to Sunday." : "Use the column positions to anchor events; do not shift items to neighboring columns without clear evidence." }
-    )
-  } catch {}
+async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tokensUsed: number }> {
+  const userParts = images.map(url => ({ type: "input_image", image_url: url }))
 
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -325,29 +257,26 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
   const text = data?.output?.[0]?.content?.[0]?.text ?? "{}"
   const tokensUsed = data?.usage?.total_tokens ?? 0
   const parsed = await robustJsonParse(text)
-  return { parsed, tokensUsed, sundayLooksEmpty }
+  return { parsed, tokensUsed }
 }
 
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
+
     const originalUrl = await fileToDataURL(file)
     const img = await loadImage(originalUrl)
     const processedUrl = preprocessImageToDataUrl(img)
-    const { parsed, tokensUsed, sundayLooksEmpty } = await callOpenAIWithImage([processedUrl, originalUrl])
-    let events = postNormalizeEvents(dedupeEvents(parsed?.events || []))
-    if (sundayLooksEmpty) {
-      events = events.filter(e => {
-        const wd = weekdayFromISO(e.start_date)
-        return wd !== 0
-      })
-    }
+    const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl])
+
+    const events = postNormalizeEvents(dedupeEvents(parsed?.events || []))
     events.sort(
       (a, b) =>
         a.start_date.localeCompare(b.start_date) ||
         ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
         a.title.localeCompare(b.title)
     )
+
     return { events, tokensUsed }
   }
 }
