@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ModeProvider } from './contexts/ModeContext';
 import { LaunchScreen } from './components/LaunchScreen';
@@ -18,9 +18,7 @@ import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
   import.meta.env.VITE_SUPABASE_ANON_KEY!,
-  {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-  }
+  { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
 );
 
 type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
@@ -30,10 +28,12 @@ function AppContent() {
   const { user, loading: authLoading } = useAuth();
   const [stage, setStage] = useState<'launch' | 'auth' | 'welcome' | 'landing'>('launch');
   const [currentPage, setCurrentPage] = useState<Page>('landing');
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [userName, setUserName] = useState('User');
-  const [initialFlow, setInitialFlow] = useState(true);
+
+  const bootstrappingRef = useRef(true);
+  const hasShownWelcomeRef = useRef(false);
+  const welcomeDelayMs = 2800;
 
   useEffect(() => {
     const startup = async () => {
@@ -42,13 +42,16 @@ function AppContent() {
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       if (session) {
-        setStage('welcome');
-        await new Promise(r => setTimeout(r, 2500));
+        if (!hasShownWelcomeRef.current) {
+          setStage('welcome');
+          hasShownWelcomeRef.current = true;
+          await new Promise(r => setTimeout(r, welcomeDelayMs));
+        }
         setStage('landing');
       } else {
         setStage('auth');
       }
-      setInitialFlow(false);
+      bootstrappingRef.current = false;
     };
     startup();
   }, []);
@@ -64,22 +67,25 @@ function AppContent() {
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (initialFlow) return;
-      if (session) {
-        setStage('welcome');
-        await new Promise(r => setTimeout(r, 2500));
+      if (bootstrappingRef.current) return;
+      if (event === 'SIGNED_IN') {
+        if (!hasShownWelcomeRef.current) {
+          setStage('welcome');
+          hasShownWelcomeRef.current = true;
+          await new Promise(r => setTimeout(r, welcomeDelayMs));
+        }
         setStage('landing');
-      } else {
+      } else if (event === 'SIGNED_OUT') {
+        hasShownWelcomeRef.current = false;
         setStage('launch');
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 800));
         setStage('auth');
       }
     });
     return () => sub.subscription.unsubscribe();
-  }, [initialFlow]);
+  }, []);
 
   const handleNavigate = (page: string) => setCurrentPage(page as Page);
-  const handleDayClick = (date: Date) => setSelectedDate(date);
   const handleEventsExtracted = (events: ParsedEvent[]) => {
     setExtractedEvents(events);
     setCurrentPage('eventConfirmation');
@@ -113,7 +119,7 @@ function AppContent() {
     return (
       <LandingPage
         onNavigate={handleNavigate}
-        onDateClick={handleDayClick}
+        onDateClick={() => {}}
         onEventsExtracted={handleEventsExtracted}
       />
     );
