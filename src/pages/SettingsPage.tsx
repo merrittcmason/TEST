@@ -7,7 +7,6 @@ import { DatabaseService } from '../services/database'
 import type { Database } from '../lib/supabase'
 import { asDisplayRange } from '../utils/datetime'
 import './SettingsPage.css'
-import { useUserSettings } from '../contexts/UserSettingsContext'
 
 const { timezone, setTimezone, tzOptions, preferDevice, setPreferDevice } = useUserSettings()
 
