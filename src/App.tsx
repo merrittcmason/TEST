@@ -1,98 +1,118 @@
-import { useEffect, useState } from 'react'
-import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { ModeProvider } from './contexts/ModeContext'
-import { LaunchScreen } from './components/LaunchScreen'
-import { WelcomeScreen } from './components/WelcomeScreen'
-import { AuthPage } from './pages/AuthPage'
-import { LandingPage } from './pages/LandingPage'
-import { EventConfirmation } from './pages/EventConfirmation'
-import { SettingsPage } from './pages/SettingsPage'
-import { AccountPage } from './pages/AccountPage'
-import { SubscriptionPage } from './pages/SubscriptionPage'
-import type { ParsedEvent } from './services/openai'
-import type { Database } from './lib/supabase'
-import { DatabaseService } from './services/database'
-import './styles/theme.css'
+import { useEffect, useRef, useState } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ModeProvider } from './contexts/ModeContext';
+import { LaunchScreen } from './components/LaunchScreen';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { AuthPage } from './pages/AuthPage';
+import { LandingPage } from './pages/LandingPage';
+import { EventConfirmation } from './pages/EventConfirmation';
+import { SettingsPage } from './pages/SettingsPage';
+import { AccountPage } from './pages/AccountPage';
+import { SubscriptionPage } from './pages/SubscriptionPage';
+import type { ParsedEvent } from './services/openai';
+import type { Database } from './lib/supabase';
+import './styles/theme.css';
 
-type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation'
-type Event = Database['public']['Tables']['events']['Row']
+type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
+type Event = Database['public']['Tables']['events']['Row'];
+
+const LAUNCH_MS = 2200;
+const WELCOME_MS = 2600;
 
 function AppContent() {
-  const { user, loading: authLoading } = useAuth()
-  const [stage, setStage] = useState<'launch' | 'auth' | 'welcome' | 'landing'>('launch')
-  const [userName, setUserName] = useState('User')
-  const [currentPage, setCurrentPage] = useState<Page>('landing')
-  const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([])
-  const LAUNCH_DURATION = 2500
-  const WELCOME_DURATION = 3200
-  const skipLaunch = sessionStorage.getItem('skipLaunchOnce') === '1'
+  const { user, loading: authLoading } = useAuth();
+  const firstMount = useRef(true);
+  const prevUser = useRef<typeof user>(null);
+
+  const [ui, setUi] = useState<'launch' | 'welcome' | 'auth' | 'app'>('launch');
+  const [page, setPage] = useState<Page>('landing');
+
+  const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
+  const [userName, setUserName] = useState('User');
 
   useEffect(() => {
-    if (authLoading) return
-    if (skipLaunch) {
-      sessionStorage.removeItem('skipLaunchOnce')
-      if (user) setStage('welcome')
-      else setStage('auth')
-      return
+    if (authLoading) return;
+    if (firstMount.current) {
+      firstMount.current = false;
+      setUi('launch');
+      const t = setTimeout(() => {
+        if (user) {
+          setUserName(user.user_metadata?.name || user.email || 'User');
+          setUi('welcome');
+          const w = setTimeout(() => setUi('app'), WELCOME_MS);
+          return () => clearTimeout(w);
+        } else {
+          setUi('auth');
+        }
+      }, LAUNCH_MS);
+      return () => clearTimeout(t);
+    } else {
+      const was = prevUser.current;
+      const now = user;
+      if (!was && now) {
+        setUserName(now.user_metadata?.name || now.email || 'User');
+        setUi('welcome');
+        const w = setTimeout(() => setUi('app'), WELCOME_MS);
+        prevUser.current = now;
+        return () => clearTimeout(w);
+      }
+      if (was && !now) {
+        setUi('auth');
+      }
     }
-    setStage('launch')
-    const t = setTimeout(() => {
-      if (user) setStage('welcome')
-      else setStage('auth')
-    }, LAUNCH_DURATION)
-    return () => clearTimeout(t)
-  }, [authLoading, user])
+    prevUser.current = user;
+  }, [authLoading, user]);
 
-  useEffect(() => {
-    if (!user || authLoading) return
-    DatabaseService.getUser(user.id)
-      .then((data) => setUserName(data?.name || user.email?.split('@')[0] || 'User'))
-      .catch(() => setUserName(user.email?.split('@')[0] || 'User'))
-  }, [user, authLoading])
+  const handleNavigate = (p: string) => setPage(p as Page);
+  const handleEventsExtracted = (events: ParsedEvent[]) => {
+    setExtractedEvents(events);
+    setPage('eventConfirmation');
+    setUi('app');
+  };
+  const handleEventsConfirmed = () => {
+    setExtractedEvents([]);
+    setPage('landing');
+  };
+  const handleEventsCancelled = () => {
+    setExtractedEvents([]);
+    setPage('landing');
+  };
 
-  if (authLoading)
-    return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
-        <div className="loading-spinner" />
-      </div>
-    )
+  if (ui === 'launch') {
+    return <LaunchScreen onComplete={() => {}} />;
+  }
 
-  if (stage === 'launch') return <LaunchScreen />
-  if (stage === 'auth') return <AuthPage />
-  if (stage === 'welcome' && user)
-    return <WelcomeScreen userName={userName} onComplete={() => setStage('landing')} />
+  if (ui === 'welcome') {
+    return <WelcomeScreen userName={userName} onComplete={() => setUi('app')} />;
+  }
 
-  if (stage === 'landing' && user) {
-    if (currentPage === 'eventConfirmation' && extractedEvents.length > 0)
+  if (ui === 'auth') {
+    return <AuthPage />;
+  }
+
+  if (ui === 'app') {
+    if (page === 'eventConfirmation' && extractedEvents.length > 0) {
       return (
         <EventConfirmation
           events={extractedEvents}
-          onConfirm={() => {
-            setExtractedEvents([])
-            setCurrentPage('landing')
-          }}
-          onCancel={() => {
-            setExtractedEvents([])
-            setCurrentPage('landing')
-          }}
+          onConfirm={handleEventsConfirmed}
+          onCancel={handleEventsCancelled}
         />
-      )
-    if (currentPage === 'settings') return <SettingsPage onNavigate={(p) => setCurrentPage(p as Page)} />
-    if (currentPage === 'account') return <AccountPage onNavigate={(p) => setCurrentPage(p as Page)} />
-    if (currentPage === 'subscription') return <SubscriptionPage onNavigate={(p) => setCurrentPage(p as Page)} />
+      );
+    }
+    if (page === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
+    if (page === 'account') return <AccountPage onNavigate={handleNavigate} />;
+    if (page === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
     return (
       <LandingPage
-        onNavigate={(p) => setCurrentPage(p as Page)}
+        onNavigate={handleNavigate}
         onDateClick={() => {}}
-        onEventsExtracted={(evts) => {
-          setExtractedEvents(evts)
-          setCurrentPage('eventConfirmation')
-        }}
+        onEventsExtracted={handleEventsExtracted}
       />
-    )
+    );
   }
 
-  return null
+  return null;
 }
 
 export default function App() {
@@ -102,5 +122,5 @@ export default function App() {
         <AppContent />
       </ModeProvider>
     </AuthProvider>
-  )
+  );
 }
