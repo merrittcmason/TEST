@@ -262,26 +262,39 @@ html.menu-open .event-input-fixed {
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .pill-full-btn {
+  position: relative;
   width: 100%;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  background: var(--glass-bg);
-  color: var(--text-primary);
-  border-radius: 999px;
-  padding: 12px 56px;
+  background: linear-gradient(135deg, #3a8dff, #0058ff);
+  color: #fff;
+  border-radius: 14px;
+  padding: 14px 28px;
   font-size: 1rem;
   font-weight: 600;
+  letter-spacing: 0.3px;
   text-align: center;
   transition: all 0.2s ease;
-  height: var(--pill-height);
-  -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
+  height: auto;
+  min-height: var(--pill-height);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  pointer-events: auto;
 }
 
 .pill-full-btn:hover:not(:disabled),
-.pill-full-btn:focus-visible { background-color: var(--glass-btn-hover); outline: none; }
+.pill-full-btn:focus-visible {
+  transform: translateY(-1px) scale(1.02);
+  background: linear-gradient(135deg, #4e9eff, #1a6fff);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
 
-.pill-full-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.pill-full-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 
 @media (max-width: 1000px) {
   .event-input-fixed { width: min(var(--pill-maxw), calc(100vw - 32px)); }
