@@ -22,6 +22,7 @@ export interface ParseResult {
   tokensUsed: number
 }
 
+// ---------- helpers ----------
 function toSmartTitleCase(s: string): string {
   const words = (s || "").trim().replace(/\s+/g, " ").split(" ")
   return words
@@ -48,7 +49,7 @@ function dedupeEvents(events: ParsedEvent[]): ParsedEvent[] {
   const seen = new Set<string>()
   const out: ParsedEvent[] = []
   for (const e of events) {
-    const key = `${(e.title || "").trim().toLowerCase()}|${e.start_date}|${e.start_time ?? ""}|${e.tag ?? ""}`
+    const key = `${(e.title || "").trim().toLowerCase()}|${e.start_date}|${e.start_time ?? ""}|${e.end_time ?? ""}|${e.tag ?? ""}`
     if (!seen.has(key)) {
       seen.add(key)
       out.push(e)
@@ -101,6 +102,76 @@ function preprocessImageToDataUrl(img: HTMLImageElement): string {
   return c.toDataURL("image/png", 0.95)
 }
 
+// ---- NEW: year harmonization (majority year wins) ----
+function harmonizeDominantYear(events: ParsedEvent[]): ParsedEvent[] {
+  if (!events.length) return events
+  const counts: Record<string, number> = {}
+  for (const e of events) {
+    const y = (e.start_date || "").slice(0, 4)
+    if (/^\d{4}$/.test(y)) counts[y] = (counts[y] || 0) + 1
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1])
+  const [dominantYear, cnt] = entries[0] || []
+  if (!dominantYear) return events
+  if (cnt / events.length < 0.7) return events // only coerce when very likely
+
+  return events.map(e => {
+    const y = e.start_date.slice(0, 4)
+    if (y !== dominantYear && /^\d{4}$/.test(y)) {
+      // keep month-day, swap year
+      const md = e.start_date.slice(4) // "-MM-DD"
+      return { ...e, start_date: `${dominantYear}${md}`, end_date: e.end_date ? `${dominantYear}${e.end_date.slice(4)}` : e.end_date }
+    }
+    return e
+  })
+}
+
+// ---- NEW: Sunday shadow filter (keeps Mon, drops stray Sun if not Mon–Tue run) ----
+function filterSundayShadowDuplicates(events: ParsedEvent[]): ParsedEvent[] {
+  const byKey = new Map<string, ParsedEvent[]>()
+  for (const e of events) {
+    const k = `${e.title.trim().toLowerCase()}|${e.start_time || ""}|${e.end_time || ""}`
+    ;(byKey.get(k) ?? byKey.set(k, []).get(k)!).push(e)
+  }
+
+  const kept: ParsedEvent[] = []
+  for (const list of byKey.values()) {
+    list.sort((a, b) => a.start_date.localeCompare(b.start_date))
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i]
+      const b = list[i + 1]
+      if (b) {
+        const da = new Date(a.start_date)
+        const db = new Date(b.start_date)
+        const sun = da.getDay() === 0 // Sunday
+        const mon = db.getDay() === 1 // Monday
+        const diffDays = Math.round((+db - +da) / 86400000)
+        if (sun && mon && diffDays === 1) {
+          const c = list[i + 2]
+          const hasMonTue = !!c && Math.round((+new Date(c.start_date) - +db) / 86400000) === 1
+          if (!hasMonTue) {
+            // drop Sunday shadow; keep Monday
+            kept.push(b)
+            i++ // skip b next loop
+            continue
+          }
+        }
+      }
+      kept.push(a)
+    }
+  }
+
+  // final hard de-dupe
+  const seen = new Set<string>()
+  return kept.filter(e => {
+    const k = `${e.title.toLowerCase()}|${e.start_date}|${e.start_time || ""}|${e.end_time || ""}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+}
+
+// ---------- prompts / schema ----------
 const SYSTEM_PROMPT = `You are an AI calendar event extractor for PDFs such as syllabi, class schedules, and event lists.
 Analyze text across multiple pages and output valid JSON.
 
@@ -127,7 +198,11 @@ Analyze text across multiple pages and output valid JSON.
 19. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
 20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
 21. Return only valid JSON in the format below.
-
+Anchor to numeric day cells:
+22. When parsing a month grid, locate the numeric day inside each cell and anchor events to the cell that contains >50% of the event text bounding box. Never use the adjacent column unless the text overlaps that cell by >50%.
+23. The left-most column is Sunday and the right-most is Saturday. Never shift an event left/right unless overlap >50% proves it belongs to the other cell.
+24. If an event’s text overlaps two cells <50% each, choose the cell whose numeric day is closest to the text’s centroid; if still tied, choose the later date.
+25. Do not create an event on an empty neighboring day just because an item is near a border. Only emit events for cells where the overlap rule places them.
 
 
 ### Output format
@@ -194,6 +269,7 @@ const IMAGE_EVENTS_SCHEMA = {
   properties: {
     events: {
       type: "array",
+      additionalProperties: false,
       items: {
         type: "object",
         additionalProperties: false,
@@ -261,6 +337,7 @@ async function callOpenAIWithImage(images: string[]): Promise<{ parsed: any; tok
   return { parsed, tokensUsed }
 }
 
+// ---------- main ----------
 export class OpenAIImageService {
   static async parse(file: File): Promise<ParseResult> {
     if (!OPENAI_API_KEY) throw new Error("OpenAI API key not configured")
@@ -270,13 +347,19 @@ export class OpenAIImageService {
     const processedUrl = preprocessImageToDataUrl(img)
     const { parsed, tokensUsed } = await callOpenAIWithImage([processedUrl, originalUrl])
 
-    const events = postNormalizeEvents(dedupeEvents(parsed?.events || []))
+    let events: ParsedEvent[] = postNormalizeEvents(dedupeEvents(parsed?.events || []))
+
+    // Sort first (stable for grouping)
     events.sort(
       (a, b) =>
         a.start_date.localeCompare(b.start_date) ||
         ((a.start_time || "23:59").localeCompare(b.start_time || "23:59")) ||
         a.title.localeCompare(b.title)
     )
+
+    // NEW: fix common image-specific errors
+    events = harmonizeDominantYear(events)
+    events = filterSundayShadowDuplicates(events)
 
     return { events, tokensUsed }
   }
