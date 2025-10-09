@@ -187,7 +187,7 @@ Respond with a JSON object in the following structure. The "events" array should
 
 # Reminder
 
-Your task: extract calendar events from images, reason step-by-step for each event, then return the results as an "events" JSON array using the specified format, with all reasoning provided first. Continue asking for clarification or further input if image details are ambiguous or insufficient.`
+Your task: extract calendar events from images, reason step-by-step for each event, then return the results as an "events" JSON array using the specified format, with all reasoning provided first. Continue asking for clarification or further input if image details are ambiguous or insufficient.`;
 
 async function robustJsonParse(s: string): Promise<any> {
   try {
