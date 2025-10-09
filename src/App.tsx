@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ModeProvider } from './contexts/ModeContext';
@@ -30,17 +31,25 @@ function AppContent() {
 
   const launchTimerRef = useRef<number | null>(null);
   const welcomeTimerRef = useRef<number | null>(null);
-  const launchTimerFiredRef = useRef(false);
-  const lastUserIdRef = useRef<string | null>(null);
-  const hasShownWelcomeForThisUserRef = useRef(false);
+  const welcomeShownForUserRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const skip = sessionStorage.getItem('skipLaunchOnce') === '1';
+    if (skip) {
+      sessionStorage.removeItem('skipLaunchOnce');
+      setStage('welcome');
+      if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
+      welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
+      return () => {
+        if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
+      };
+    }
+
     setStage('launch');
     launchTimerRef.current = window.setTimeout(() => {
-      launchTimerFiredRef.current = true;
       if (user) {
-        hasShownWelcomeForThisUserRef.current = false;
         setStage('welcome');
+        if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
         welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
       } else {
         setStage('auth');
@@ -48,19 +57,14 @@ function AppContent() {
     }, LAUNCH_DURATION);
 
     return () => {
-      if (launchTimerRef.current) {
-        clearTimeout(launchTimerRef.current);
-        launchTimerRef.current = null;
-      }
-      if (welcomeTimerRef.current) {
-        clearTimeout(welcomeTimerRef.current);
-        welcomeTimerRef.current = null;
-      }
+      if (launchTimerRef.current) clearTimeout(launchTimerRef.current);
+      if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once per mount
 
   useEffect(() => {
-    if (!user || authLoading) return;
+    if (authLoading || !user) return;
     (async () => {
       try {
         const profile = await DatabaseService.getUser(user.id);
@@ -78,34 +82,15 @@ function AppContent() {
     if (authLoading) return;
 
     if (!user) {
-      lastUserIdRef.current = null;
-      hasShownWelcomeForThisUserRef.current = false;
-      if (stage !== 'launch') {
-        setStage('auth');
-      }
+      welcomeShownForUserRef.current = null;
+      if (stage !== 'launch') setStage('auth');
       return;
     }
 
-    if (lastUserIdRef.current !== user.id) {
-      lastUserIdRef.current = user.id;
-      hasShownWelcomeForThisUserRef.current = false;
-    }
-
-    if (stage === 'auth' && user) {
-      if (!hasShownWelcomeForThisUserRef.current) {
+    if (stage === 'auth') {
+      if (welcomeShownForUserRef.current !== user.id) {
         setStage('welcome');
-        hasShownWelcomeForThisUserRef.current = true;
-        if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
-        welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
-      } else {
-        setStage('landing');
-      }
-    }
-
-    if (stage === 'launch' && launchTimerFiredRef.current && user) {
-      if (!hasShownWelcomeForThisUserRef.current) {
-        setStage('welcome');
-        hasShownWelcomeForThisUserRef.current = true;
+        welcomeShownForUserRef.current = user.id;
         if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
         welcomeTimerRef.current = window.setTimeout(() => setStage('landing'), WELCOME_DURATION);
       } else {
