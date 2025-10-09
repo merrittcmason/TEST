@@ -1,8 +1,8 @@
-// src/services/database.ts
 import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
 
 type User = Database['public']['Tables']['users']['Row'];
+type UserUpdate = Database['public']['Tables']['users']['Update'];
 type Event = Database['public']['Tables']['events']['Row'];
 type EventInsert = Database['public']['Tables']['events']['Insert'];
 type EventUpdate = Database['public']['Tables']['events']['Update'];
@@ -11,8 +11,22 @@ type UploadQuota = Database['public']['Tables']['upload_quotas']['Row'];
 type Subscription = Database['public']['Tables']['subscriptions']['Row'];
 type DraftEventRow = Database['public']['Tables']['draft_events']['Row'];
 type DraftEventInsert = Database['public']['Tables']['draft_events']['Insert'];
-type UserPrefsRow = Database['public']['Tables']['user_prefs']['Row'];
-type UserPrefsInsert = Database['public']['Tables']['user_prefs']['Insert'];
+
+type UserPrefs = {
+  user_id: string;
+  timezone_preference: string | null;
+  time_format_preference: 'auto' | '12' | '24' | null;
+  tz_mode: 'auto' | 'manual' | null;
+  theme_preference: 'system' | 'light' | 'dark' | null;
+  default_view: 'month' | 'week' | null;
+  week_start: 'sunday' | 'monday' | null;
+  reminders_enabled: boolean;
+  daily_summary_enabled: boolean;
+  mode: 'personal' | 'education' | 'business' | 'enterprise' | null;
+  display_time_zone?: string | null;
+  hour_cycle?: string | null;
+  date_format?: string | null;
+};
 
 async function getCurrentUserId(): Promise<string> {
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -28,40 +42,47 @@ export class DatabaseService {
     return data;
   }
 
-  static async updateUser(userId: string, updates: Database['public']['Tables']['users']['Update']): Promise<User> {
+  static async updateUser(userId: string, updates: UserUpdate): Promise<User> {
     const { data, error } = await supabase.from('users').update(updates).eq('id', userId).select().single();
     if (error) throw error;
     return data;
   }
 
-  static async getUserPreferences(userId: string): Promise<UserPrefsRow | null> {
-    const { data, error } = await supabase.from('user_prefs').select('*').eq('user_id', userId).maybeSingle();
+  static async markProfileCompleted(userId: string, value: boolean): Promise<User> {
+    const { data, error } = await supabase.from('users').update({ profile_completed: value }).eq('id', userId).select().single();
     if (error) throw error;
-    return data as UserPrefsRow | null;
+    return data;
   }
 
-  static async updateUserPreferences(
-    userId: string,
-    prefs: { timezone_preference: string | null; time_format_preference: 'auto' | '12' | '24' }
-  ): Promise<UserPrefsRow> {
-    const payload: UserPrefsInsert = {
-      user_id: userId,
-      timezone_preference: prefs.timezone_preference,
-      time_format_preference: prefs.time_format_preference
-    } as UserPrefsInsert;
-    const { data, error } = await supabase
-      .from('user_prefs')
-      .upsert(payload, { onConflict: 'user_id' })
-      .select()
-      .single();
+  static async upsertUsername(userId: string, username: string): Promise<User> {
+    const { data, error } = await supabase.from('users').update({ username }).eq('id', userId).select().single();
     if (error) throw error;
-    return data as UserPrefsRow;
+    return data;
+  }
+
+  static async getUserPreferences(userId: string): Promise<UserPrefs | null> {
+    const { data, error } = await supabase.from('user_prefs').select('*').eq('user_id', userId).maybeSingle();
+    if (error) throw error;
+    return data as any;
+  }
+
+  static async updateUserPreferences(userId: string, updates: Partial<UserPrefs>): Promise<UserPrefs> {
+    const existing = await this.getUserPreferences(userId);
+    if (!existing) {
+      const insertPayload = { user_id: userId, ...updates } as any;
+      const { data, error } = await supabase.from('user_prefs').insert(insertPayload).select().single();
+      if (error) throw error;
+      return data as any;
+    }
+    const { data, error } = await supabase.from('user_prefs').update(updates as any).eq('user_id', userId).select().single();
+    if (error) throw error;
+    return data as any;
   }
 
   static async getEvents(userId: string, startDate?: string, endDate?: string, label?: string): Promise<Event[]> {
-    let query = supabase.from('events').select('*').eq('user_id', userId).order('date', { ascending: true }).order('time', { ascending: true, nullsFirst: false });
-    if (startDate) query = query.gte('date', startDate);
-    if (endDate) query = query.lte('date', endDate);
+    let query = supabase.from('events').select('*').eq('user_id', userId).order('start_date', { ascending: true }).order('start_time', { ascending: true, nullsFirst: false });
+    if (startDate) query = query.gte('start_date', startDate);
+    if (endDate) query = query.lte('end_date', endDate);
     if (label) query = query.eq('label', label);
     const { data, error } = await query;
     if (error) throw error;
@@ -139,12 +160,6 @@ export class DatabaseService {
     return data as Subscription;
   }
 
-  static async updateUserMode(userId: string, mode: string): Promise<User> {
-    const { data, error } = await supabase.from('users').update({ mode }).eq('id', userId).select().single();
-    if (error) throw error;
-    return data as User;
-  }
-
   static async replaceDraftEvents(userId: string, drafts: DraftEventInsert[]): Promise<DraftEventRow[]> {
     const { error: delErr } = await supabase.from('draft_events').delete().eq('user_id', userId);
     if (delErr) throw delErr;
@@ -173,10 +188,5 @@ export class DatabaseService {
     const { data, error } = await supabase.from('draft_events').insert(payload).select();
     if (error) throw error;
     return (data || []) as DraftEventRow[];
-  }
-
-  static async deleteDraftEvents(userId: string): Promise<void> {
-    const { error } = await supabase.from('draft_events').delete().eq('user_id', userId);
-    if (error) throw error;
   }
 }
