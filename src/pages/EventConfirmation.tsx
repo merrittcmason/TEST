@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DatabaseService } from '../services/database'
 import { useAuth } from '../contexts/AuthContext'
 import { useMode } from '../contexts/ModeContext'
@@ -27,17 +27,16 @@ interface EditableEvent {
 }
 
 function toEditable(e: any, i: number): EditableEvent {
-  const today = new Date().toISOString().split('T')[0]
-  const allDay = Boolean(e?.all_day ?? false)
+  const hasTimes = e?.start_time != null || e?.end_time != null
   return {
-    tempId: `temp-${i}-${e?.id ?? Date.now()}`,
+    tempId: `temp-${i}-${e?.id ?? crypto.randomUUID?.() ?? Date.now()}`,
     title: (e?.title ?? e?.name ?? e?.event_name ?? '').toString(),
     location: (e?.location ?? null) as string | null,
-    all_day: allDay,
-    start_date: (e?.start_date ?? today) as string,
-    start_time: (e?.start_time ?? (allDay ? null : '09:00')) as string | null,
-    end_date: (e?.end_date ?? e?.start_date ?? today) as string,
-    end_time: (e?.end_time ?? (allDay ? null : '10:00')) as string | null,
+    all_day: Boolean(e?.all_day ?? (!hasTimes)),
+    start_date: (e?.start_date ?? null) as string | null,
+    start_time: (e?.all_day ? null : e?.start_time ?? null) as string | null,
+    end_date: (e?.end_date ?? e?.start_date ?? null) as string | null,
+    end_time: (e?.all_day ? null : e?.end_time ?? null) as string | null,
     is_recurring: Boolean(e?.is_recurring ?? false),
     recurrence_rule: (e?.recurrence_rule ?? null) as string | null,
     label: (e?.label ?? null) as string | null,
@@ -56,9 +55,12 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   const [error, setError] = useState('')
   const [applyLabelToAll, setApplyLabelToAll] = useState(false)
   const [globalLabel, setGlobalLabel] = useState('')
+  const hydrated = useRef(false)
 
   useEffect(() => {
+    if (hydrated.current) return
     setEditableEvents((events ?? []).map((e, i) => toEditable(e, i)))
+    hydrated.current = true
   }, [events])
 
   useEffect(() => {
@@ -69,7 +71,19 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
 
   const handleFieldChange = (tempId: string, field: keyof EditableEvent, value: any) => {
     setEditableEvents(prev =>
-      prev.map(e => (e.tempId === tempId ? { ...e, [field]: value } : e))
+      prev.map(e => {
+        if (e.tempId !== tempId) return e
+        if (field === 'all_day') {
+          const allDay = Boolean(value)
+          return {
+            ...e,
+            all_day: allDay,
+            start_time: allDay ? null : e.start_time,
+            end_time: allDay ? null : e.end_time
+          }
+        }
+        return { ...e, [field]: value }
+      })
     )
     if (field === 'label' && applyLabelToAll) {
       setGlobalLabel(value ?? '')
@@ -77,18 +91,18 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   }
 
   const handleAddEvent = () => {
-    const today = new Date().toISOString().split('T')[0]
+    const last = editableEvents[editableEvents.length - 1]
     const newEvent: EditableEvent = {
-      tempId: `temp-${Date.now()}`,
+      tempId: `temp-${crypto.randomUUID?.() ?? Date.now()}`,
       title: '',
       location: '',
-      all_day: false,
-      start_date: today,
-      start_time: '09:00',
-      end_date: today,
-      end_time: '10:00',
+      all_day: true,
+      start_date: last?.start_date ?? null,
+      start_time: null,
+      end_date: last?.end_date ?? last?.start_date ?? null,
+      end_time: null,
       is_recurring: false,
-      recurrence_rule: '',
+      recurrence_rule: null,
       label: '',
       tag: '',
       description: ''
@@ -103,9 +117,31 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   const validateEvents = () => {
     for (const e of editableEvents) {
       if (!(e.title ?? '').toString().trim()) throw new Error('Each event must have a title')
-      if (!e.start_date || !e.end_date) throw new Error('Each event must have start and end dates')
+      if (!e.start_date) throw new Error('Each event must have a start date')
+      if (!e.end_date) throw new Error('Each event must have an end date')
+      if (!e.all_day) {
+        if (e.start_time == null || e.start_time === '') throw new Error('Timed events need a start time')
+        if (e.end_time == null || e.end_time === '') throw new Error('Timed events need an end time')
+      }
     }
   }
+
+  const serialize = (e: EditableEvent) => ({
+    user_id: user!.id,
+    title: e.title,
+    all_day: e.all_day,
+    is_recurring: e.is_recurring,
+    recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
+    start_date: e.start_date,
+    start_time: e.all_day ? null : e.start_time,
+    end_date: e.end_date ?? e.start_date,
+    end_time: e.all_day ? null : e.end_time,
+    tzid: 'UTC',
+    location: e.location,
+    description: e.description,
+    tag: e.tag,
+    label: e.label
+  })
 
   const handleConfirm = async () => {
     if (!user) return setError('Not authenticated')
@@ -113,22 +149,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     setLoading(true)
     try {
       validateEvents()
-      const rows = editableEvents.map(e => ({
-        user_id: user.id,
-        title: e.title,
-        all_day: e.all_day,
-        is_recurring: e.is_recurring,
-        recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
-        start_date: e.start_date,
-        start_time: e.all_day ? null : e.start_time,
-        end_date: e.end_date,
-        end_time: e.all_day ? null : e.end_time,
-        tzid: 'UTC',
-        location: e.location,
-        description: e.description,
-        tag: e.tag,
-        label: e.label
-      }))
+      const rows = editableEvents.map(serialize)
       await DatabaseService.createEvents(rows)
       await DatabaseService.clearDraftEvents(user.id)
       onConfirm()
@@ -145,22 +166,7 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     setLoading(true)
     try {
       validateEvents()
-      const drafts = editableEvents.map(e => ({
-        user_id: user.id,
-        title: e.title,
-        all_day: e.all_day,
-        is_recurring: e.is_recurring,
-        recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
-        start_date: e.start_date,
-        start_time: e.all_day ? null : e.start_time,
-        end_date: e.end_date,
-        end_time: e.all_day ? null : e.end_time,
-        tzid: 'UTC',
-        location: e.location,
-        description: e.description,
-        tag: e.tag,
-        label: e.label
-      }))
+      const drafts = editableEvents.map(serialize)
       await DatabaseService.replaceDraftEvents(user.id, drafts)
       onConfirm()
     } catch (err: any) {
