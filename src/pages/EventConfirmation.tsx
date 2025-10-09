@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { DatabaseService } from '../services/database'
 import { useAuth } from '../contexts/AuthContext'
 import { useMode } from '../contexts/ModeContext'
+import { toUTC, getDeviceTimezone } from '../utils/timeUtils'
 import './EventConfirmation.css'
 
 interface EventConfirmationProps {
@@ -48,14 +49,31 @@ function toEditable(e: any, i: number): EditableEvent {
 export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirmationProps) {
   const { user } = useAuth()
   const { mode } = useMode()
-  const [editableEvents, setEditableEvents] = useState<EditableEvent[]>(
-    (events ?? []).map((e, i) => toEditable(e, i))
-  )
+  const [editableEvents, setEditableEvents] = useState<EditableEvent[]>((events ?? []).map((e, i) => toEditable(e, i)))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [applyLabelToAll, setApplyLabelToAll] = useState(false)
   const [globalLabel, setGlobalLabel] = useState('')
   const hydrated = useRef(false)
+  const [activeTimezone, setActiveTimezone] = useState<string>(getDeviceTimezone())
+  const [timeFormatPref, setTimeFormatPref] = useState<'auto' | 'h12' | 'h24'>('auto')
+
+  useEffect(() => {
+    let active = true
+    async function initPrefs() {
+      if (!user) return
+      const u = await DatabaseService.getUser(user.id)
+      const tz = (u as any)?.timezone_preference || null
+      const tf = ((u as any)?.time_format_preference as 'auto' | 'h12' | 'h24' | null) || 'auto'
+      if (!active) return
+      setActiveTimezone(tz || getDeviceTimezone())
+      setTimeFormatPref(tf)
+    }
+    initPrefs()
+    return () => {
+      active = false
+    }
+  }, [user])
 
   useEffect(() => {
     let active = true
@@ -152,31 +170,56 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
     }
   }
 
-  const serialize = (e: EditableEvent) => ({
-    user_id: user!.id,
-    title: e.title,
-    all_day: e.all_day,
-    is_recurring: e.is_recurring,
-    recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
-    start_date: e.start_date,
-    start_time: e.all_day ? null : e.start_time,
-    end_date: e.end_date ?? e.start_date,
-    end_time: e.all_day ? null : e.end_time,
-    tzid: 'UTC',
-    location: e.location,
-    description: e.description,
-    tag: e.tag,
-    label: e.label
-  })
+  const serialize = (e: EditableEvent) => {
+    if (e.all_day) {
+      return {
+        user_id: user!.id,
+        title: e.title,
+        all_day: true,
+        is_recurring: e.is_recurring,
+        recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
+        start_date: e.start_date,
+        start_time: null,
+        end_date: e.end_date ?? e.start_date,
+        end_time: null,
+        tzid: activeTimezone,
+        location: e.location,
+        description: e.description,
+        tag: e.tag,
+        label: e.label
+      }
+    }
+    const s = toUTC(e.start_date as string, e.start_time as string, activeTimezone)
+    const en = toUTC((e.end_date ?? e.start_date) as string, e.end_time as string, activeTimezone)
+    return {
+      user_id: user!.id,
+      title: e.title,
+      all_day: false,
+      is_recurring: e.is_recurring,
+      recurrence_rule: e.is_recurring ? e.recurrence_rule : null,
+      start_date: s.utcDate,
+      start_time: s.utcTime,
+      end_date: en.utcDate,
+      end_time: en.utcTime,
+      tzid: activeTimezone,
+      location: e.location,
+      description: e.description,
+      tag: e.tag,
+      label: e.label
+    }
+  }
 
   const handleConfirm = async () => {
-    if (!user) return setError('Not authenticated')
+    if (!user) {
+      setError('Not authenticated')
+      return
+    }
     setError('')
     setLoading(true)
     try {
       validateEvents()
       const rows = editableEvents.map(serialize)
-      await DatabaseService.createEvents(rows)
+      await DatabaseService.createEvents(rows as any)
       await DatabaseService.clearDraftEvents(user.id)
       onConfirm()
     } catch (err: any) {
@@ -187,13 +230,16 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   }
 
   const handleSaveForLater = async () => {
-    if (!user) return setError('Not authenticated')
+    if (!user) {
+      setError('Not authenticated')
+      return
+    }
     setError('')
     setLoading(true)
     try {
       validateEvents()
       const drafts = editableEvents.map(serialize)
-      await DatabaseService.replaceDraftEvents(user.id, drafts)
+      await DatabaseService.replaceDraftEvents(user.id, drafts as any)
       onConfirm()
     } catch (err: any) {
       setError(err.message || 'Failed to save drafts')
@@ -203,7 +249,10 @@ export function EventConfirmation({ events, onConfirm, onCancel }: EventConfirma
   }
 
   const handleCancelDiscard = async () => {
-    if (!user) return onCancel()
+    if (!user) {
+      onCancel()
+      return
+    }
     setLoading(true)
     try {
       await DatabaseService.clearDraftEvents(user.id)
