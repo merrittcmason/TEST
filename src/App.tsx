@@ -41,12 +41,12 @@ function AppContent() {
   useEffect(() => {
     const runStartupFlow = async () => {
       setStage('launch');
-      await new Promise(res => setTimeout(res, 1200));
+      await new Promise(res => setTimeout(res, 900));
       const { data } = await supabase.auth.getSession();
       const session = data.session;
       if (session) {
         setStage('welcome');
-        await new Promise(res => setTimeout(res, 1200));
+        await new Promise(res => setTimeout(res, 900));
         setStage('landing');
       } else {
         setStage('auth');
@@ -66,14 +66,15 @@ function AppContent() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') return;
       if (session) {
         setStage('welcome');
-        await new Promise(res => setTimeout(res, 1200));
+        await new Promise(res => setTimeout(res, 900));
         setStage('landing');
       } else {
         setStage('launch');
-        await new Promise(res => setTimeout(res, 1000));
+        await new Promise(res => setTimeout(res, 700));
         setStage('auth');
       }
     });
@@ -98,6 +99,7 @@ function AppContent() {
   if (stage === 'launch') return <LaunchScreen />;
   if (stage === 'auth') return <AuthPage />;
   if (stage === 'welcome' && user) return <WelcomeScreen userName={userName} />;
+
   if (stage === 'landing' && user) {
     if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
       return (
@@ -119,6 +121,7 @@ function AppContent() {
       />
     );
   }
+
   return null;
 }
 
