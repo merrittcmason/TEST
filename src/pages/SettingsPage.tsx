@@ -148,15 +148,18 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   <p className="setting-description">Events are stored in UTC and shown in your selected zone</p>
                 </div>
                 <div className="timezone-controls">
-                  <label className="toggle-switch" style={{ marginRight: 12 }}>
-                    <input
-                      type="checkbox"
-                      checked={preferDevice}
-                      onChange={(e) => setPreferDevice(e.target.checked)}
-                    />
-                    <span className="toggle-slider"></span>
+                  <input
+                    id="preferDevice"
+                    className="toggle-input"
+                    type="checkbox"
+                    checked={preferDevice}
+                    onChange={(e) => setPreferDevice(e.currentTarget.checked)}
+                    aria-label="Use device timezone"
+                  />
+                  <label className="toggle-switch" htmlFor="preferDevice">
+                    <span className="toggle-slider" />
                   </label>
-                  <span className="toggle-label" style={{ marginRight: 12 }}>Use device timezone</span>
+                  <span className="toggle-label">Use device timezone</span>
                   <select
                     className="setting-select"
                     value={timezone}
