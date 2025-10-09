@@ -246,8 +246,7 @@
   .confirmation-actions .btn {
     width: 100%;
   }
-}
-.light-mode .field-group.full input,
+  .light-mode .field-group.full input,
 .light-mode .field-group.full select,
 .light-mode .field-group.full textarea {
   background-color: #fff;
@@ -267,4 +266,6 @@
 
 .light-mode .confirmation-header p {
   color: #444;
+}
+
 }
