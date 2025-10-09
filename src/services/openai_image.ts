@@ -126,6 +126,7 @@ Analyze text across multiple pages and output valid JSON.
 18. Only apply title casing to standard words, not to words that are already all uppercase.
 19. Do not alter intentional capitalization in abbreviations, organization names, or course labels.
 20. Exclude terms like "Submit, Turn in, Complete" in event titles. Keep names concise.
+21. For duplicate events from information that spans multiple days, create one event that starts on the first day and ends on the last.
 21. Return only valid JSON in the format below.
 ### Output format
 {
