@@ -71,12 +71,27 @@
 }
 
 .auth-error {
-  padding: 12px;
-  background-color: var(--error-bg);
-  color: var(--error);
-  border-radius: 8px;
-  font-size: 0.875rem;
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border: 1px solid var(--error);
+  background-color: rgba(244, 67, 54, 0.15);
+  color: var(--text-primary);
 }
+
+[data-theme='light'] .auth-error {
+  background-color: #fdecea; /* soft pale red for light mode */
+  color: #611a15; /* dark red text */
+  border-color: #f44336;
+}
+
+[data-theme='dark'] .auth-error {
+  background-color: rgba(255, 99, 71, 0.15); /* soft transparent red glow */
+  color: #ffb3b3; /* readable light red text */
+  border-color: rgba(255, 99, 71, 0.5);
+}
+
 
 .auth-submit {
   width: 100%;
