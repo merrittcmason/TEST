@@ -262,12 +262,10 @@ html.menu-open .event-input-fixed {
 @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 .pill-full-btn {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: var(--pill-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: 100%;
   border: none;
   border-radius: 999px;
   background: var(--glass-bg);
@@ -275,16 +273,21 @@ html.menu-open .event-input-fixed {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
   -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
   backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-blur));
   box-shadow: 0 0 16px rgba(0,0,0,0.2);
-  transition: all 0.25s ease;
   pointer-events: auto;
+  z-index: 2;
 }
 
 .pill-full-btn:hover:not(:disabled),
 .pill-full-btn:focus-visible {
-  background-color: var(--glass-btn-hover);
+  background: var(--glass-btn-hover);
   transform: scale(1.02);
 }
 
@@ -292,6 +295,7 @@ html.menu-open .event-input-fixed {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 
 
 
