@@ -106,12 +106,12 @@ const SYSTEM_PROMPT = `Extract calendar event information from provided images, 
 Your Objective:
 - Carefully analyze each image to extract event details: title, date(s), time(s), location, recurrence, label, tag, and any available description.
 - construct a complete JSON output using the provided schema.
-- If information is missing or ambiguous in the image, infer reasonable defaults, leave fields as `null` if necessary, and clearly specify your inferences in the reasoning.
+- If information is missing or ambiguous in the image, infer reasonable defaults, leave fields as "null" if necessary, and clearly specify your inferences in the reasoning.
 
 # Steps
 
 1. **Image Analysis:** Examine the image to identify possible events and extract all relevant data: event title, dates, times, location, recurrence rules, labels, tags, and descriptions.
-2. **Inference:** If required fields are missing, infer reasonable values or set to `null`. Explain any inferences made.
+2. **Inference:** If required fields are missing, infer reasonable values or set to "null". Explain any inferences made.
 3. **Event Assembly:** After completing all analyses, assemble the extracted information into the final structured JSON.
 
 # Output Format
@@ -187,7 +187,7 @@ Respond with a JSON object in the following structure. The "events" array should
 
 # Reminder
 
-Your task: extract calendar events from images, reason step-by-step for each event, then return the results as an "events" JSON array using the specified format, with all reasoning provided first. Continue asking for clarification or further input if image details are ambiguous or insufficient.`;
+Your task: extract calendar events from images, reason step-by-step for each event, then return the results as an "events" JSON array using the specified format, with all reasoning provided first. Continue asking for clarification or further input if image details are ambiguous or insufficient.`
 
 async function robustJsonParse(s: string): Promise<any> {
   try {
