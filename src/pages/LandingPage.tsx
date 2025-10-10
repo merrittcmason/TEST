@@ -1,44 +1,42 @@
-import { useState } from 'react';
-import { HamburgerMenu } from '../components/HamburgerMenu';
-import { WeekAtAGlance } from '../components/WeekAtAGlance';
-import { CalendarView } from '../components/CalendarView';
-import { EventInput } from '../components/EventInput';
-import type { ParsedEvent } from '../services/openai';
-import './LandingPage.css';
+import { useState } from 'react'
+import { HamburgerMenu } from '../components/HamburgerMenu'
+import { WeekAtAGlance } from '../components/WeekAtAGlance'
+import { CalendarView } from '../components/CalendarView'
+import { EventInput } from '../components/EventInput'
+import type { ParsedEvent } from '../services/openai'
+import './LandingPage.css'
 
 interface LandingPageProps {
-  onNavigate: (page: string) => void;
-  onDateClick: (date: Date) => void;
-  onEventsExtracted: (events: ParsedEvent[]) => void;
+  onNavigate: (page: string) => void
+  onDateClick: (date: Date) => void
+  onEventsExtracted: (events: ParsedEvent[]) => void
 }
 
 export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: LandingPageProps) {
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [modalActive, setModalActive] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [modalActive, setModalActive] = useState(false)
 
   const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-    onDateClick?.(date);
-  };
+    setSelectedDate(date)
+    onDateClick?.(date)
+  }
 
   return (
     <div className="landing-page">
       {!modalActive && <HamburgerMenu onNavigate={onNavigate} />}
 
-      <div className="landing-container">
-        <main className="landing-content">
-          {!modalActive && <WeekAtAGlance onDateClick={handleDateSelect} />}
+      <div className="app-shell">
+        {!modalActive && <WeekAtAGlance onDateClick={handleDateSelect} />}
 
-          <CalendarView
-            selectedDate={selectedDate}
-            onDateSelect={setSelectedDate}
-            onEventClick={() => setModalActive(true)}
-            onModalClose={() => setModalActive(false)}
-          />
+        <CalendarView
+          selectedDate={selectedDate}
+          onDateSelect={setSelectedDate}
+          onEventClick={() => setModalActive(true)}
+          onModalClose={() => setModalActive(false)}
+        />
 
-          {!modalActive && <EventInput onEventsExtracted={onEventsExtracted} />}
-        </main>
+        {!modalActive && <EventInput onEventsExtracted={onEventsExtracted} />}
       </div>
     </div>
-  );
+  )
 }
