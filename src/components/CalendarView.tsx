@@ -18,6 +18,8 @@ interface CalendarViewProps {
 
 export function CalendarView({ selectedDate, onDateSelect, onEventClick }: CalendarViewProps) {
   const { user } = useAuth();
+  const [userPrefs, setUserPrefs] = useState<{ timezone_preference: string | null, time_format_preference: string | null } | null>(null)
+
   const [currentMonth, setCurrentMonth] = useState(selectedDate);
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedTag, setSelectedTag] = useState<string>('');
