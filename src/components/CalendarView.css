@@ -407,8 +407,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: clamp(28px, 5.2vw, 34px);
-  height: clamp(28px, 5.2vw, 34px);
+  width: clamp(28px, 4.5vw, 40px);
+  height: clamp(28px, 4.5vw, 40px);
   border-radius: 10px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
