@@ -434,13 +434,13 @@
 .form-group-checkbox { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
 
 .edit-actions {
-  flex-wrap: wrap;
   padding: 14px 18px;
   border-top: 1px solid var(--border-color);
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
   justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: clamp(6px, 1vw, 12px);
   background: var(--bg-secondary);
 }
 .edit-actions-right { display: contents; }
