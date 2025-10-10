@@ -198,7 +198,11 @@
 .calendar-days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: var(--gap);
+  gap: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--bg-primary);
 }
 .calendar-day {
   aspect-ratio: 1;
