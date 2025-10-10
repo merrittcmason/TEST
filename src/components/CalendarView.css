@@ -1,6 +1,6 @@
 :root {
-  --day-min: clamp(64px, 12.5vw, 136px);
-  --gap: clamp(3px, 1vw, 8px);
+  --day-min: clamp(72px, 13vw, 160px);
+  --gap: clamp(1px, 0.6vw, 6px);
 }
 .calendar-view {
   width: 100%;
