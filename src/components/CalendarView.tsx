@@ -60,6 +60,16 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
   }, [user, currentMonth, selectedTag]);
 
   useEffect(() => {
+  if (!user) return
+  const loadPrefs = async () => {
+    const prefs = await DatabaseService.getUserPreferences(user.id)
+    setUserPrefs(prefs)
+  }
+  loadPrefs()
+}, [user])
+
+
+  useEffect(() => {
     if (!user || !showDayDetail) return;
     const loadDay = async () => {
       try {
@@ -85,6 +95,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
+  
 
   const getDaysInMonth = () => {
     const start = startOfMonth(currentMonth);
