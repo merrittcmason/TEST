@@ -31,37 +31,47 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (authLoading) return;
-    let mounted = true;
+useEffect(() => {
+  if (authLoading) return;
+  let mounted = true;
 
-    const run = async () => {
-      if (!user) {
-        setNeedsProfile(false);
-        setShowWelcome(false);
-        return;
-      }
+  const run = async () => {
+    if (!user) {
+      setNeedsProfile(false);
+      setShowWelcome(false);
+      return;
+    }
 
-      const u = await DatabaseService.getUser(user.id);
-      if (!mounted) return;
+    // Force a short delay so Supabase finishes writing the user record
+    await new Promise(r => setTimeout(r, 400));
 
-      setFirstName(u?.first_name || 'User');
+    const u = await DatabaseService.getUser(user.id);
+    if (!mounted) return;
 
-      if (!u?.profile_completed) {
-        setNeedsProfile(true);
-      } else {
-        setNeedsProfile(false);
-        setFirstTime(!u?.last_login_at);
-        setShowWelcome(true);
-        setTimeout(() => mounted && setShowWelcome(false), 1600);
-      }
-    };
+    // Only show profile or welcome once we actually have a valid user row
+    if (!u) {
+      setNeedsProfile(true);
+      return;
+    }
 
-    run();
-    return () => {
-      mounted = false;
-    };
-  }, [user, authLoading]);
+    setFirstName(u.first_name || 'User');
+    const completed = !!u.profile_completed;
+
+    setNeedsProfile(!completed);
+
+    if (completed) {
+      setFirstTime(!u.last_login_at);
+      setShowWelcome(true);
+      setTimeout(() => mounted && setShowWelcome(false), 1600);
+    }
+  };
+
+  run();
+  return () => {
+    mounted = false;
+  };
+}, [user, authLoading]);
+
 
   const handleProfileDone = () => {
     setNeedsProfile(false);
