@@ -3,25 +3,24 @@
   --gap: clamp(3px, 1vw, 8px);
 }
 
-/* Global scaling for all calendar elements */
 @media (max-width: 1200px) {
   html { font-size: 15px; }
-  .calendar-view { transform: scale(0.95); transform-origin: top center; }
+
 }
 
 @media (max-width: 900px) {
   html { font-size: 14px; }
-  .calendar-view { transform: scale(0.9); transform-origin: top center; }
+
 }
 
 @media (max-width: 700px) {
   html { font-size: 13px; }
-  .calendar-view { transform: scale(0.85); transform-origin: top center; }
+
 }
 
 @media (max-width: 500px) {
   html { font-size: 12px; }
-  .calendar-view { transform: scale(0.8); transform-origin: top center; }
+
 }
 
 :root[data-theme='dark'] {
@@ -338,7 +337,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 10000;
   padding: 20px;
   animation: fadeIn 0.2s ease;
 }
