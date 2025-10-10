@@ -455,6 +455,13 @@
   font-weight: 700;
   font-size: clamp(12px, 2.4vw, 14px);
 }
+@media (max-width: 380px) {
+  .edit-actions .btn {
+    min-width: 64px;
+    height: 28px;
+    font-size: 10.5px;
+  }
+}
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
