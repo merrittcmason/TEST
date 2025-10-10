@@ -187,6 +187,7 @@
 }
 
 .calendar-grid { width: 100%; overflow: visible; }
+  margin: 0;
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
