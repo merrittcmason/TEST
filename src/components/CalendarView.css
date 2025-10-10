@@ -399,7 +399,7 @@
 .event-card-label { background: color-mix(in oklab, var(--accent-primary), transparent 85%); color: var(--accent-primary); }
 .event-card-tag { background-color: var(--bg-tertiary); color: var(--text-tertiary); }
 
-.event-card-desc { font-size: clamp(11px, 2.2vw, 14px); color: var(--text-secondary); line-height: 1.4; }
+.event-card-desc { font-size: clamp(11px, 1.6vw, 15px); color: var(--text-secondary); line-height: 1.4; }
 
 .event-card-actions { display: flex; gap: 6px; }
 
