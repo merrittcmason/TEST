@@ -12,13 +12,13 @@ import { SubscriptionPage } from './pages/SubscriptionPage';
 import { CompleteProfilePage } from './pages/CompleteProfilePage';
 import type { ParsedEvent } from './services/openai';
 import { DatabaseService } from './services/database';
+import { supabase } from './lib/supabase';
 import './styles/theme.css';
 
 type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirmation';
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
-
   const [showLaunch, setShowLaunch] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [firstTime, setFirstTime] = useState(false);
@@ -27,77 +27,67 @@ function AppContent() {
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [userDataLoading, setUserDataLoading] = useState(true);
-  const [authTransitioning, setAuthTransitioning] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
-  // Handle the app launch splash
   useEffect(() => {
     const timer = setTimeout(() => setShowLaunch(false), 900);
     return () => clearTimeout(timer);
   }, []);
 
-  // Detect sign-in / sign-out transitions
   useEffect(() => {
-    // whenever user changes, mark transition state for 600ms
-    setAuthTransitioning(true);
-    const t = setTimeout(() => setAuthTransitioning(false), 600);
-    return () => clearTimeout(t);
-  }, [user]);
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+      setSessionReady(true);
+    };
+    checkSession();
+  }, []);
 
-  // Load user record
   useEffect(() => {
     let mounted = true;
-
     const loadUserData = async () => {
-      if (authLoading || authTransitioning) return;
+      if (authLoading || !sessionReady) return;
       setUserDataLoading(true);
-
       if (!user) {
         setNeedsProfile(false);
         setShowWelcome(false);
         setUserDataLoading(false);
         return;
       }
-
-      // slight wait to let Supabase sync triggers
-      await new Promise(r => setTimeout(r, 600));
-
+      await new Promise(r => setTimeout(r, 400));
       let u = null;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 5; i++) {
         const res = await DatabaseService.getUser(user.id);
         if (res) {
           u = res;
           break;
         }
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 250));
       }
-
       if (!mounted) return;
-
       if (!u) {
         setNeedsProfile(true);
         setUserDataLoading(false);
         return;
       }
-
       const first = u.first_name?.trim() || 'User';
       setFirstName(first);
       const completed = !!u.profile_completed;
       setNeedsProfile(!completed);
-
       if (completed && first !== 'User') {
         setFirstTime(!u.last_login_at);
         setShowWelcome(true);
         setTimeout(() => mounted && setShowWelcome(false), 1600);
       }
-
       setUserDataLoading(false);
     };
-
     loadUserData();
     return () => {
       mounted = false;
     };
-  }, [user, authLoading, authTransitioning]);
+  }, [user, authLoading, sessionReady]);
 
   const handleProfileDone = () => {
     setNeedsProfile(false);
@@ -112,23 +102,18 @@ function AppContent() {
     setCurrentPage('eventConfirmation');
   };
 
-  // --- render gates ---
-  if (showLaunch)
-    return <LaunchScreen onComplete={() => {}} />;
+  if (showLaunch) return <LaunchScreen onComplete={() => {}} />;
 
-  // Block until auth & DB user both resolved and transition cooldown ends
-  if (authLoading || userDataLoading || authTransitioning)
+  if (authLoading || !sessionReady || userDataLoading)
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
         <div className="loading-spinner" />
       </div>
     );
 
-  if (!user)
-    return <AuthPage />;
+  if (!user) return <AuthPage />;
 
-  if (needsProfile)
-    return <CompleteProfilePage onDone={handleProfileDone} />;
+  if (needsProfile) return <CompleteProfilePage onDone={handleProfileDone} />;
 
   if (showWelcome)
     return <WelcomeScreen userName={firstName} onComplete={() => setShowWelcome(false)} firstTime={firstTime} />;
