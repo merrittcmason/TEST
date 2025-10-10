@@ -190,7 +190,7 @@
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 0;
+  gap: var(--gap);
   margin-bottom: 6px;
 }
 .calendar-weekday {
@@ -209,7 +209,7 @@
   border-radius: 18px;
   overflow: hidden;
   background: var(--bg-primary);
-  margin: 0;
+  
 }
 .calendar-day {
   aspect-ratio: 1;
