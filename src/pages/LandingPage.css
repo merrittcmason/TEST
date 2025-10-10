@@ -37,33 +37,38 @@
     font-size: 2.5rem;
   }
 }
-.landing-page, .landing-container, .landing-content { padding: 0; }
-
-.stack { display: grid; gap: clamp(12px, 2.5vw, 20px); }
-
-.fullbleed {
-  width: 100vw;
-  margin-left: 50%;
-  transform: translateX(-50%);
+:root {
+  --edge-pad: clamp(8px, 2.2vw, 16px);
 }
 
-.section-pad {
-  padding-inline: clamp(8px, 2.4vw, 16px);
+html, body, .landing-page { overflow-x: hidden; }
+
+.landing-rail {
+  width: 100%;
+  padding-inline: var(--edge-pad);
+  display: grid;
+  gap: clamp(12px, 2.2vw, 20px);
+  box-sizing: border-box;
+  margin: 0 auto;
 }
 
-.section-surface {
+.rail-card {
+  width: 100%;
   border-radius: 16px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
-.section-surface > * {
-  width: 100%;
-}
-
-/* Safety: ensure each component fills the surface width */
-.week-at-a-glance,
-.calendar-view,
-.event-input-root {
+.rail-card > * {
   width: 100%;
   display: block;
+  box-sizing: border-box;
+}
+
+/* If your EventInput pill is fixed at the bottom and uses side offsets,
+   align it to the same rail without changing its style file */
+.event-input-root {
+  left: var(--edge-pad);
+  right: var(--edge-pad);
+  width: auto;
 }
