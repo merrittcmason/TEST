@@ -25,18 +25,15 @@ export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: Land
     <div className="landing-page">
       {!modalActive && <HamburgerMenu onNavigate={onNavigate} />}
 
-      <div className="app-shell">
-        {!modalActive && <WeekAtAGlance onDateClick={handleDateSelect} />}
+<div className="fullbleed">
+  <CalendarView
+    selectedDate={selectedDate}
+    onDateSelect={setSelectedDate}
+    onEventClick={() => setModalActive(true)}
+    onModalClose={() => setModalActive(false)}
+  />
+</div>
 
-        <CalendarView
-          selectedDate={selectedDate}
-          onDateSelect={setSelectedDate}
-          onEventClick={() => setModalActive(true)}
-          onModalClose={() => setModalActive(false)}
-        />
-
-        {!modalActive && <EventInput onEventsExtracted={onEventsExtracted} />}
-      </div>
     </div>
   )
 }
