@@ -259,7 +259,7 @@
 
 .day-event {
   font-size: clamp(9px, 2vw, 11px);
-  padding: 1px 3px;
+  padding: 0px 2px;
   background: var(--gradient-primary);
   color: #06111a;
   border-radius: 2px;
