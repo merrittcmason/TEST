@@ -8,43 +8,58 @@ interface AccountPageProps {
   onNavigate: (page: string) => void;
 }
 
+const HOW_HEARD_OPTIONS = ['friend','social','search','app_store','ad','other'];
+
 export function AccountPage({ onNavigate }: AccountPageProps) {
   const { user, signOut } = useAuth();
   const [userData, setUserData] = useState<any>(null);
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
+  const [dob, setDob] = useState('');
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [howHeard, setHowHeard] = useState<string>('search');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!user) return;
-
     const loadUserData = async () => {
       try {
         const data = await DatabaseService.getUser(user.id);
         setUserData(data);
-        setName(data?.name || '');
-      } catch (error) {
-        console.error('Failed to load user data:', error);
+        setFirstName(data?.first_name || '');
+        setLastName(data?.last_name || '');
+        setUsername(data?.username || '');
+        setDob(data?.dob || '');
+        setMarketingOptIn(!!data?.marketing_opt_in);
+        setHowHeard(data?.how_heard || 'search');
+      } catch {
       } finally {
         setLoading(false);
       }
     };
-
     loadUserData();
   }, [user]);
 
   const handleSave = async () => {
     if (!user) return;
-
     setSaving(true);
     setMessage('');
-
     try {
-      await DatabaseService.updateUser(user.id, { name });
+      const updated = await DatabaseService.updateUser(user.id, {
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+        username: username.trim() || null,
+        dob: dob || null,
+        marketing_opt_in: marketingOptIn,
+        how_heard: howHeard || null
+      } as any);
+      setUserData(updated);
       setMessage('Profile updated successfully');
       setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
+    } catch {
       setMessage('Failed to update profile');
     } finally {
       setSaving(false);
@@ -52,14 +67,10 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
   };
 
   const handleDeleteAccount = async () => {
-    if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-      return;
-    }
-
+    if (!confirm('Are you sure you want to delete your account? This action cannot be undone.')) return;
     try {
       await signOut();
-    } catch (error) {
-      console.error('Failed to delete account:', error);
+    } catch {
     }
   };
 
@@ -87,25 +98,84 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
           <section className="account-section">
             <h2 className="section-title">Profile</h2>
             <div className="account-card">
-              <div className="form-group">
-                <label htmlFor="name">Name</label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your name"
-                />
-              </div>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label htmlFor="first_name">First name</label>
+                  <input
+                    id="first_name"
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                  />
+                </div>
 
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  value={user?.email || ''}
-                  disabled
-                />
+                <div className="form-group">
+                  <label htmlFor="last_name">Last name</label>
+                  <input
+                    id="last_name"
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="username">Username</label>
+                  <input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="yourname"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="email">Email</label>
+                  <input id="email" type="email" value={user?.email || ''} disabled />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="dob">Date of birth</label>
+                  <input
+                    id="dob"
+                    type="date"
+                    value={dob || ''}
+                    onChange={(e) => setDob(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="how_heard">How did you hear about us?</label>
+                  <select id="how_heard" value={howHeard} onChange={(e) => setHowHeard(e.target.value)}>
+                    {HOW_HEARD_OPTIONS.map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group checkbox-row">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={marketingOptIn}
+                      onChange={(e) => setMarketingOptIn(e.target.checked)}
+                    />
+                    Sign me up for product updates
+                  </label>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="provider">Account provider</label>
+                  <input
+                    id="provider"
+                    type="text"
+                    value={userData?.account_provider || 'password'}
+                    disabled
+                  />
+                </div>
               </div>
 
               {message && (
@@ -114,11 +184,7 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
                 </div>
               )}
 
-              <button
-                onClick={handleSave}
-                className="btn btn-primary"
-                disabled={saving}
-              >
+              <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
@@ -178,10 +244,7 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
                     </>
                   )}
                 </div>
-                <button
-                  onClick={() => onNavigate('subscription')}
-                  className="btn btn-primary plan-btn"
-                >
+                <button onClick={() => onNavigate('subscription')} className="btn btn-primary plan-btn">
                   {userData?.plan_type === 'free' ? 'Upgrade to Pro' : 'Manage Subscription'}
                 </button>
               </div>
@@ -198,10 +261,7 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
                     Permanently delete your account and all associated data. This action cannot be undone.
                   </p>
                 </div>
-                <button
-                  onClick={handleDeleteAccount}
-                  className="btn btn-danger"
-                >
+                <button onClick={handleDeleteAccount} className="btn btn-danger">
                   Delete Account
                 </button>
               </div>
