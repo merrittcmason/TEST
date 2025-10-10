@@ -258,18 +258,18 @@
 }
 
 .day-event {
-  display: block;
-  text-align: left;
-  width: 100%;
-  font-size: clamp(9px, 1.9vw, 12px);
-  padding: 2px 6px;
+  font-size: clamp(9px, 2vw, 11px);
+  padding: 1px 3px;
   background: var(--gradient-primary);
   color: #06111a;
-  border-radius: 4px;
+  border-radius: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.2;
 }
+
 
 .day-event-more {
   text-align: left;
