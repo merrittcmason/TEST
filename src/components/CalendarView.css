@@ -206,13 +206,14 @@
 }
 .calendar-day {
   aspect-ratio: 1;
-  min-height: var(--day-min);
-  padding: clamp(3px, 0.9vw, 8px);
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
+  padding: clamp(4px, 1vw, 8px);
+  background: var(--bg-primary);
+  border: 0;
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
   cursor: pointer;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  transition: background-color .2s ease, transform .2s ease, outline-color .2s ease;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
