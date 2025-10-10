@@ -557,9 +557,3 @@
 }
 
 .landing-rail .calendar-view { transform: none !important; }
-@media (max-width: 900px) {
-  .calendar-day { aspect-ratio: 2 / 3; min-height: calc(var(--day-min) * 1.7); }
-}
-@media (max-width: 600px) {
-  .calendar-day { aspect-ratio: 10 / 16; min-height: calc(var(--day-min) * 1.9); }
-}
