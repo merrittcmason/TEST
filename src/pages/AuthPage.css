@@ -663,3 +663,7 @@
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
+.auth-container.signup,
+.auth-container.mode-signup {
+  padding-bottom: 32px;
+}
