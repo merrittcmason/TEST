@@ -25,35 +25,27 @@ export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: Land
     <div className="landing-page">
       {!modalActive && <HamburgerMenu onNavigate={onNavigate} />}
 
-      <div className="landing-container">
-        <main className="landing-content stack">
-          {!modalActive && (
-            <section className="fullbleed section-pad">
-              <div className="section-surface">
-                <WeekAtAGlance onDateClick={handleDateSelect} />
-              </div>
-            </section>
-          )}
-
-          <section className="fullbleed section-pad">
-            <div className="section-surface">
-              <CalendarView
-                selectedDate={selectedDate}
-                onDateSelect={setSelectedDate}
-                onEventClick={() => setModalActive(true)}
-                onModalClose={() => setModalActive(false)}
-              />
-            </div>
+      <div className="landing-rail">
+        {!modalActive && (
+          <section className="rail-card">
+            <WeekAtAGlance onDateClick={handleDateSelect} />
           </section>
+        )}
 
-          {!modalActive && (
-            <section className="fullbleed section-pad">
-              <div className="section-surface">
-                <EventInput onEventsExtracted={onEventsExtracted} />
-              </div>
-            </section>
-          )}
-        </main>
+        <section className="rail-card">
+          <CalendarView
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+            onEventClick={() => setModalActive(true)}
+            onModalClose={() => setModalActive(false)}
+          />
+        </section>
+
+        {!modalActive && (
+          <section className="rail-card">
+            <EventInput onEventsExtracted={onEventsExtracted} />
+          </section>
+        )}
       </div>
     </div>
   );
