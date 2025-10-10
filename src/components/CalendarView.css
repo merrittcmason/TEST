@@ -50,6 +50,7 @@
 }
 
 .calendar-view {
+  padding: clamp(10px, 1.6vw, 16px);
   background: var(--glass-bg, var(--bg-tertiary));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
