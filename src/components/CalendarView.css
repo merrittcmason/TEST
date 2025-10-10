@@ -264,16 +264,16 @@
 }
 
 .day-event {
-  font-size: clamp(9px, 0.85vw, 12px);
-  padding: clamp(1px, 0.2vw, 3px) clamp(2px, 0.35vw, 5px);
+  font-size: clamp(9px, 0.9vw, 14px);
+  padding: clamp(1px, 0.3vw, 6px) clamp(2px, 0.6vw, 10px);
   background: var(--gradient-primary);
   color: #06111a;
-  border-radius: 3px;
+  border-radius: clamp(2px, 0.4vw, 6px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  line-height: 1.3;
+  line-height: 1.25;
   text-align: left;
 }
 
