@@ -371,7 +371,13 @@
   flex: 1;
 }
 
-.event-card-time { font-size: clamp(11px, 2vw, 13px); font-weight: 700; color: var(--text-secondary); min-width: 78px; text-align: left; }
+.event-card-time { 
+  font-size: clamp(11px, 1.6vw, 14px);
+  font-weight: 700; 
+  color: var(--text-secondary); 
+  min-width: clamp(68px, 8vw, 120px);
+}
+
 .event-card-details { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .event-card-name { font-size: clamp(13px, 2.4vw, 16px); font-weight: 800; color: var(--text-primary); line-height: 1.3; }
 
