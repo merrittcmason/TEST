@@ -12,12 +12,11 @@ type Event = Database['public']['Tables']['events']['Row'];
 interface CalendarViewProps {
   selectedDate: Date;
   onDateSelect: (date: Date) => void;
-  onEventClick?: (event: Event) => void;
-  onModalOpen?: () => void;
-  onModalClose?: () => void;
+  onEventClick: (event: Event) => void;
+  onModalToggle?: (open: boolean) => void;
 }
 
-export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModalOpen, onModalClose }: CalendarViewProps) {
+export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModalToggle }: CalendarViewProps) {
   const { user } = useAuth();
   const [userPrefs, setUserPrefs] = useState<{ timezone_preference: string | null; time_format_preference: string | null } | null>(null);
   const [currentMonth, setCurrentMonth] = useState(selectedDate);
@@ -28,9 +27,6 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
   const [dayEvents, setDayEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [showSelector, setShowSelector] = useState(false);
-  const selectorRef = useRef<HTMLDivElement | null>(null);
   const [editForm, setEditForm] = useState({
     title: '',
     start_date: '',
@@ -43,39 +39,50 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
     tag: '',
     description: ''
   });
+  const [saving, setSaving] = useState(false);
+  const [showSelector, setShowSelector] = useState(false);
+  const selectorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    const load = async () => {
-      const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
-      const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
-      const loaded = await DatabaseService.getEvents(user.id, start, end);
-      const uniqueTags = Array.from(new Set(loaded.map((e: Event) => (e.tag || '').trim()).filter((t: string): t is string => !!t))).sort((a: string, b: string) => a.localeCompare(b));
-      setAvailableTags(uniqueTags);
-      setEvents(selectedTag ? loaded.filter((e: Event) => (e.tag || '').trim() === selectedTag) : loaded);
+    const loadEvents = async () => {
+      try {
+        const start = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
+        const end = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
+        const loaded = await DatabaseService.getEvents(user.id, start, end);
+        const uniqueTags = Array.from(new Set(loaded.map((e: Event) => (e.tag || '').trim()).filter((t: string): t is string => !!t))).sort((a: string, b: string) => a.localeCompare(b));
+        setAvailableTags(uniqueTags);
+        setEvents(selectedTag ? loaded.filter((e: Event) => (e.tag || '').trim() === selectedTag) : loaded);
+      } catch {}
     };
-    load().catch(() => {});
+    loadEvents();
   }, [user, currentMonth, selectedTag]);
 
   useEffect(() => {
     if (!user) return;
-    DatabaseService.getUserPreferences(user.id).then(setUserPrefs).catch(() => {});
+    const loadPrefs = async () => {
+      const prefs = await DatabaseService.getUserPreferences(user.id);
+      setUserPrefs(prefs);
+    };
+    loadPrefs();
   }, [user]);
 
   useEffect(() => {
     if (!user || !showDayDetail) return;
     const loadDay = async () => {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const evts: Event[] = await DatabaseService.getEvents(user.id, dateStr, dateStr);
-      const sorted = evts.sort((a, b) => {
-        if (a.all_day && !b.all_day) return 1;
-        if (!a.all_day && b.all_day) return -1;
-        if (!a.start_time || !b.start_time) return 0;
-        return a.start_time.localeCompare(b.start_time);
-      });
-      setDayEvents(sorted);
+      try {
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const evts: Event[] = await DatabaseService.getEvents(user.id, dateStr, dateStr);
+        const sorted = evts.sort((a, b) => {
+          if (a.all_day && !b.all_day) return 1;
+          if (!a.all_day && b.all_day) return -1;
+          if (!a.start_time || !b.start_time) return 0;
+          return a.start_time.localeCompare(b.start_time);
+        });
+        setDayEvents(sorted);
+      } catch {}
     };
-    loadDay().catch(() => {});
+    loadDay();
   }, [user, selectedDate, showDayDetail]);
 
   useEffect(() => {
@@ -88,9 +95,23 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
   }, []);
 
   useEffect(() => {
-    const anyOpen = showDayDetail || !!selectedEvent || !!editingEvent;
-    if (anyOpen) onModalOpen?.(); else onModalClose?.();
-  }, [showDayDetail, selectedEvent, editingEvent, onModalOpen, onModalClose]);
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  const openOverlay = () => {
+    document.body.style.overflow = 'hidden';
+    if (typeof onModalToggle === 'function') onModalToggle(true);
+  };
+
+  const closeOverlay = () => {
+    document.body.style.overflow = '';
+    if (typeof onModalToggle === 'function') onModalToggle(false);
+    setShowDayDetail(false);
+    setSelectedEvent(null);
+    setEditingEvent(null);
+  };
 
   const getDaysInMonth = () => {
     const start = startOfMonth(currentMonth);
@@ -110,20 +131,30 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
   const timeRange = (e: Event) => {
     if (e.all_day) return 'All day';
     const tz = userPrefs?.timezone_preference || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const fmt12 = userPrefs?.time_format_preference === '12';
-    const fmt24 = userPrefs?.time_format_preference === '24';
-    const hour12 = fmt12 ? true : fmt24 ? false : undefined;
-    const toText = (date: string, time: string) => {
-      const local = fromUTC(date, time, tz).localTime;
-      if (!local) return '';
-      const [h, m] = local.split(':');
-      const d = new Date(2000, 0, 1, parseInt(h), parseInt(m));
-      return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', hour12 }).format(d);
-    };
-    if (e.start_time && e.end_time) return `${toText(e.start_date, e.start_time)} – ${toText(e.end_date || e.start_date, e.end_time)}`;
-    if (e.start_time) return toText(e.start_date, e.start_time);
+    const use24h = userPrefs?.time_format_preference === '24';
+    const fmt = use24h ? 'HH:mm' : 'h:mm a';
+    if (e.start_time && e.end_time) {
+      const s = fromUTC(e.start_date, e.start_time, tz).localTime;
+      const en = fromUTC(e.end_date || e.start_date, e.end_time, tz).localTime;
+      return `${formatDisplayTime(s, fmt)} – ${formatDisplayTime(en, fmt)}`;
+    }
+    if (e.start_time) {
+      const s = fromUTC(e.start_date, e.start_time, tz).localTime;
+      return formatDisplayTime(s, fmt);
+    }
     return '';
   };
+
+  function formatDisplayTime(time: string | null, fmt: string) {
+    if (!time) return '';
+    const [h, m] = time.split(':');
+    const d = new Date(2000, 0, 1, parseInt(h), parseInt(m));
+    return new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: fmt === 'h:mm a'
+    }).format(d);
+  }
 
   const handlePrevMonth = () => {
     const y = currentMonth.getFullYear();
@@ -144,6 +175,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
   const handleDayClick = (day: Date) => {
     onDateSelect(day);
     setShowDayDetail(true);
+    openOverlay();
   };
 
   const handleEditEvent = (event: Event) => {
@@ -160,6 +192,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
       tag: event.tag || '',
       description: event.description || ''
     });
+    openOverlay();
   };
 
   const handleSaveEdit = async () => {
@@ -190,6 +223,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
         });
         setDayEvents(sorted);
       }
+      closeOverlay();
     } catch {
       alert('Failed to update event');
     } finally {
@@ -215,6 +249,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
         });
         setDayEvents(sorted);
       }
+      closeOverlay();
     } catch {
       alert('Failed to delete event');
     } finally {
@@ -244,7 +279,9 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
                   <option disabled>No tags yet</option>
                 ) : (
                   availableTags.map(tag => (
-                    <option key={tag} value={tag}>{tag}</option>
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
                   ))
                 )}
               </select>
@@ -304,7 +341,9 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
       <div className="calendar-grid">
         <div className="calendar-weekdays">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} className="calendar-weekday">{day}</div>
+            <div key={day} className="calendar-weekday">
+              {day}
+            </div>
           ))}
         </div>
 
@@ -317,9 +356,7 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
               <button
                 key={index}
                 className={`calendar-day ${!isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`}
-                onClick={() => {
-                  handleDayClick(day);
-                }}
+                onClick={() => handleDayClick(day)}
               >
                 <span className="day-number">{format(day, 'd')}</span>
                 {dayEventsForDate.length > 0 && (
@@ -332,14 +369,17 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedEvent(event);
-                          onEventClick?.(event);
+                          onEventClick(event);
+                          openOverlay();
                         }}
                       >
                         {event.title}
                       </div>
                     ))}
                     {dayEventsForDate.length > 3 && (
-                      <div className="day-event-more">+{dayEventsForDate.length - 3} more</div>
+                      <div className="day-event-more">
+                        +{dayEventsForDate.length - 3} more
+                      </div>
                     )}
                   </div>
                 )}
@@ -349,157 +389,214 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick, onModal
         </div>
       </div>
 
-      {showDayDetail &&
-        createPortal(
-          <div className="day-detail-overlay" onClick={() => setShowDayDetail(false)}>
-            <div className="day-detail-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="day-detail-header">
-                <div>
-                  <h2 className="day-detail-title">{format(selectedDate, 'EEEE')}</h2>
-                  <p className="day-detail-date">{format(selectedDate, 'MMMM d, yyyy')}</p>
-                </div>
-                <button className="day-detail-close" onClick={() => setShowDayDetail(false)}>✕</button>
+      {showDayDetail && createPortal(
+        <div className="day-detail-overlay" onClick={closeOverlay}>
+          <div className="day-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="day-detail-header">
+              <div>
+                <h2 className="day-detail-title">{format(selectedDate, 'EEEE')}</h2>
+                <p className="day-detail-date">{format(selectedDate, 'MMMM d, yyyy')}</p>
               </div>
-              <div className="day-detail-events-list">
-                {dayEvents.length === 0 ? (
-                  <div className="no-events-message">No events scheduled for this day</div>
-                ) : (
-                  dayEvents.map(event => (
-                    <div key={event.id} className="day-event-card">
-                      <div className="event-card-info">
-                        <div className="event-card-time">{timeRange(event)}</div>
-                        <div className="event-card-details">
-                          <div className="event-card-name">{event.title}</div>
-                          <div className="event-card-sub">
-                            {event.location && <span className="event-card-location">{event.location}</span>}
-                            {event.label && <span className="event-card-label">{event.label}</span>}
-                            {event.tag && <span className="event-card-tag">{event.tag}</span>}
-                          </div>
-                          {event.description && <div className="event-card-desc">{event.description}</div>}
+              <button className="day-detail-close" onClick={closeOverlay}>✕</button>
+            </div>
+            <div className="day-detail-events-list">
+              {dayEvents.length === 0 ? (
+                <div className="no-events-message">No events scheduled for this day</div>
+              ) : (
+                dayEvents.map(event => (
+                  <div key={event.id} className="day-event-card">
+                    <div className="event-card-info">
+                      <div className="event-card-time">{timeRange(event)}</div>
+                      <div className="event-card-details">
+                        <div className="event-card-name">{event.title}</div>
+                        <div className="event-card-sub">
+                          {event.location && <span className="event-card-location">{event.location}</span>}
+                          {event.label && <span className="event-card-label">{event.label}</span>}
+                          {event.tag && <span className="event-card-tag">{event.tag}</span>}
                         </div>
-                      </div>
-                      <div className="event-card-actions">
-                        <button className="btn-icon" onClick={() => setSelectedEvent(event)} title="View details">
-                          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        </button>
-                        <button className="btn-icon" onClick={() => handleEditEvent(event)} title="Edit event">
-                          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
+                        {event.description && <div className="event-card-desc">{event.description}</div>}
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                    <div className="event-card-actions">
+                      <button className="btn-icon" onClick={() => { setSelectedEvent(event); openOverlay(); }} title="View details">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      </button>
+                      <button className="btn-icon" onClick={() => handleEditEvent(event)} title="Edit event">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          </div>,
-          document.body
-        )
-      }
+          </div>
+        </div>,
+        document.body
+      )}
 
-      {selectedEvent &&
-        createPortal(
-          <div className="event-modal-overlay" onClick={() => setSelectedEvent(null)}>
-            <div className="event-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>{selectedEvent.title}</h3>
-              <div className="event-details">
-                <p><strong>Date:</strong> {selectedEvent.start_date}{selectedEvent.end_date && selectedEvent.end_date !== selectedEvent.start_date ? ` – ${selectedEvent.end_date}` : ''}</p>
-                {!selectedEvent.all_day && <p><strong>Time:</strong> {timeRange(selectedEvent)}</p>}
-                {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
-                {selectedEvent.label && <p><strong>Label:</strong> {selectedEvent.label}</p>}
-                {selectedEvent.tag && <p><strong>Tag:</strong> {selectedEvent.tag}</p>}
-                {selectedEvent.description && <p><strong>Description:</strong> {selectedEvent.description}</p>}
-              </div>
-              <button onClick={() => setSelectedEvent(null)} className="btn btn-primary">Close</button>
+      {selectedEvent && createPortal(
+        <div className="event-modal-overlay" onClick={closeOverlay}>
+          <div className="event-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{selectedEvent.title}</h3>
+            <div className="event-details">
+              <p><strong>Date:</strong> {selectedEvent.start_date}{selectedEvent.end_date && selectedEvent.end_date !== selectedEvent.start_date ? ` – ${selectedEvent.end_date}` : ''}</p>
+              {!selectedEvent.all_day && (
+                <p>
+                  <strong>Time:</strong> {timeRange(selectedEvent)}
+                </p>
+              )}
+              {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
+              {selectedEvent.label && <p><strong>Label:</strong> {selectedEvent.label}</p>}
+              {selectedEvent.tag && <p><strong>Tag:</strong> {selectedEvent.tag}</p>}
+              {selectedEvent.description && <p><strong>Description:</strong> {selectedEvent.description}</p>}
             </div>
-          </div>,
-          document.body
-        )
-      }
+            <button onClick={closeOverlay} className="btn btn-primary">Close</button>
+          </div>
+        </div>,
+        document.body
+      )}
 
-      {editingEvent &&
-        createPortal(
-          <div className="event-modal-overlay" onClick={() => !saving && setEditingEvent(null)}>
-            <div className="event-edit-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="edit-modal-header">
-                <h3>Edit Event</h3>
-                <button className="modal-close" onClick={() => setEditingEvent(null)}>✕</button>
+      {editingEvent && createPortal(
+        <div className="event-modal-overlay" onClick={() => !saving && closeOverlay()}>
+          <div className="event-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="edit-modal-header">
+              <h3>Edit Event</h3>
+              <button className="modal-close" onClick={closeOverlay}>✕</button>
+            </div>
+            <div className="edit-form">
+              <div className="form-group">
+                <label htmlFor="edit-title">Title</label>
+                <input
+                  id="edit-title"
+                  type="text"
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  placeholder="Event title"
+                />
               </div>
-              <div className="edit-form">
+              <div className="form-group">
+                <label htmlFor="edit-location">Location</label>
+                <input
+                  id="edit-location"
+                  type="text"
+                  value={editForm.location}
+                  onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                  placeholder="Online or building/room"
+                />
+              </div>
+              <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="edit-title">Title</label>
-                  <input id="edit-title" type="text" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} placeholder="Event title" />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="edit-location">Location</label>
-                  <input id="edit-location" type="text" value={editForm.location} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} placeholder="Online or building/room" />
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="edit-start-date">Start date</label>
-                    <input id="edit-start-date" type="date" value={editForm.start_date} onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })} />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="edit-start-time">Start time</label>
-                    <input id="edit-start-time" type="time" value={editForm.start_time} onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })} disabled={editForm.all_day} />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="edit-end-date">End date</label>
-                    <input id="edit-end-date" type="date" value={editForm.end_date} onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })} />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="edit-end-time">End time</label>
-                    <input id="edit-end-time" type="time" value={editForm.end_time} onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })} disabled={editForm.all_day} />
-                  </div>
+                  <label htmlFor="edit-start-date">Start date</label>
+                  <input
+                    id="edit-start-date"
+                    type="date"
+                    value={editForm.start_date}
+                    onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
+                  />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="edit-label">Label</label>
-                  <input id="edit-label" type="text" value={editForm.label} onChange={(e) => setEditForm({ ...editForm, label: e.target.value })} placeholder="e.g., CS101" />
+                  <label htmlFor="edit-start-time">Start time</label>
+                  <input
+                    id="edit-start-time"
+                    type="time"
+                    value={editForm.start_time}
+                    onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                    disabled={editForm.all_day}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="edit-end-date">End date</label>
+                  <input
+                    id="edit-end-date"
+                    type="date"
+                    value={editForm.end_date}
+                    onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
+                  />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="edit-tag">Tag</label>
-                  <input id="edit-tag" type="text" value={editForm.tag} onChange={(e) => setEditForm({ ...editForm, tag: e.target.value })} placeholder="e.g., Class, Meeting" />
+                  <label htmlFor="edit-end-time">End time</label>
+                  <input
+                    id="edit-end-time"
+                    type="time"
+                    value={editForm.end_time}
+                    onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })}
+                    disabled={editForm.all_day}
+                  />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="edit-description">Description</label>
-                  <textarea id="edit-description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} placeholder="Details" />
-                </div>
-                <div className="form-group-checkbox">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={editForm.all_day}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          all_day: e.target.checked,
-                          start_time: e.target.checked ? '' : editForm.start_time,
-                          end_time: e.target.checked ? '' : editForm.end_time
-                        })
-                      }
-                    />
-                    All day event
-                  </label>
-                </div>
-                <div className="edit-actions">
-                  <button onClick={handleDeleteEvent} className="btn btn-danger" disabled={saving}>{saving ? 'Deleting...' : 'Delete'}</button>
-                  <div className="edit-actions-right">
-                    <button onClick={() => setEditingEvent(null)} className="btn btn-secondary" disabled={saving}>Cancel</button>
-                    <button onClick={handleSaveEdit} className="btn btn-primary" disabled={saving || !editForm.title || !editForm.start_date || !editForm.end_date}>{saving ? 'Saving...' : 'Save'}</button>
-                  </div>
+              </div>
+              <div className="form-group">
+                <label htmlFor="edit-label">Label</label>
+                <input
+                  id="edit-label"
+                  type="text"
+                  value={editForm.label}
+                  onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
+                  placeholder="e.g., CS101"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="edit-tag">Tag</label>
+                <input
+                  id="edit-tag"
+                  type="text"
+                  value={editForm.tag}
+                  onChange={(e) => setEditForm({ ...editForm, tag: e.target.value })}
+                  placeholder="e.g., Class, Meeting"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="edit-description">Description</label>
+                <textarea
+                  id="edit-description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  placeholder="Details"
+                />
+              </div>
+              <div className="form-group-checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={editForm.all_day}
+                    onChange={(e) => setEditForm({
+                      ...editForm,
+                      all_day: e.target.checked,
+                      start_time: e.target.checked ? '' : editForm.start_time,
+                      end_time: e.target.checked ? '' : editForm.end_time
+                    })}
+                  />
+                  All day event
+                </label>
+              </div>
+              <div className="edit-actions">
+                <button onClick={handleDeleteEvent} className="btn btn-danger" disabled={saving}>
+                  {saving ? 'Deleting...' : 'Delete'}
+                </button>
+                <div className="edit-actions-right">
+                  <button onClick={closeOverlay} className="btn btn-secondary" disabled={saving}>
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="btn btn-primary"
+                    disabled={saving || !editForm.title || !editForm.start_date || !editForm.end_date}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
                 </div>
               </div>
             </div>
-          </div>,
-          document.body
-        )
-      }
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
