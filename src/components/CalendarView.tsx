@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import type { Database } from '../lib/supabase';
 import './CalendarView.css';
 import { fromUTC } from '../utils/timeUtils'
+import { createPortal } from 'react-dom';
 
 
 type Event = Database['public']['Tables']['events']['Row'];
