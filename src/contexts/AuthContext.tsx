@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import './AuthPage.css';
+import '../pages/AuthPage.css';
 
 function scorePassword(pw: string) {
   let s = 0;
