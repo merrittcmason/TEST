@@ -42,13 +42,11 @@ useEffect(() => {
       return;
     }
 
-    // Force a short delay so Supabase finishes writing the user record
     await new Promise(r => setTimeout(r, 400));
 
     const u = await DatabaseService.getUser(user.id);
     if (!mounted) return;
 
-    // Only show profile or welcome once we actually have a valid user row
     if (!u) {
       setNeedsProfile(true);
       return;
