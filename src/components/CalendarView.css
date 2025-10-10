@@ -446,6 +446,8 @@
 
 .edit-actions .btn {
   min-width: 140px;
+  flex: 1 1 140px;
+  max-width: 200px;
   height: 42px;
   border-radius: 12px;
   display: inline-flex;
