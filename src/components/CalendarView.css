@@ -434,6 +434,7 @@
 .form-group-checkbox { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
 
 .edit-actions {
+  flex-wrap: wrap;
   padding: 14px 18px;
   border-top: 1px solid var(--border-color);
   display: flex;
