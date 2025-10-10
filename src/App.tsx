@@ -30,7 +30,7 @@ function AppContent() {
   const [dbUser, setDbUser] = useState<any>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowLaunch(false), 900);
+    const timer = setTimeout(() => setShowLaunch(false), 1800);
     return () => clearTimeout(timer);
   }, []);
 
@@ -58,12 +58,12 @@ function AppContent() {
       if (!active) return;
       setDbUser(u);
       if (u) {
-        setFirstName(u.first_name);
+        setFirstName(u.first_name || 'User');
         setNeedsProfile(!u.profile_completed);
         if (u.profile_completed && u.first_name) {
           setFirstTime(!u.last_login_at);
           setShowWelcome(true);
-          setTimeout(() => active && setShowWelcome(false), 1600);
+          setTimeout(() => active && setShowWelcome(false), 3000);
         }
       }
     };
@@ -76,7 +76,7 @@ function AppContent() {
   const handleProfileDone = () => {
     setNeedsProfile(false);
     setShowWelcome(true);
-    setTimeout(() => setShowWelcome(false), 1600);
+    setTimeout(() => setShowWelcome(false), 3000);
   };
 
   const handleNavigate = (page: string) => setCurrentPage(page as Page);
