@@ -187,7 +187,6 @@ export function AuthPage() {
 
             <div className="auth-alt">
               <div className="create-account-row">
-                <span className="create-account-text">Don’t have an account?</span>
                 <button type="button" className="link-btn" onClick={() => setMode('signup')}>
                   Create an account
                 </button>
