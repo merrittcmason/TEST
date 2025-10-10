@@ -12,6 +12,12 @@
   --glass-btn-hover: rgba(255, 255, 255, 0.65);
   --menu-blur: 6px;
 }
+.event-input,
+.event-input-wrapper {
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
 
 @media (prefers-color-scheme: dark) {
   :root {
