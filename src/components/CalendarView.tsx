@@ -397,8 +397,8 @@ const timeRange = (e: Event) => {
               {!selectedEvent.all_day && (
                 <p>
                   <strong>Time:</strong>{' '}
-                  {selectedEvent.start_time ? format(new Date(`2000-01-01T${selectedEvent.start_time}`), 'h:mm a') : ''}
-{selectedEvent.end_time ? ` – ${format(new Date(`2000-01-01T${selectedEvent.end_time}`), 'h:mm a')}` : ''}
+                  {fromUTC(selectedEvent.start_date, selectedEvent.start_time, getDeviceTimezone()).localTime}
+{selectedEvent.end_time ? ` – ${fromUTC(selectedEvent.end_date || selectedEvent.start_date, selectedEvent.end_time, getDeviceTimezone()).localTime}` : ''}
 
                 </p>
               )}
