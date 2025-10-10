@@ -18,7 +18,6 @@ type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirma
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
-  const [userDataLoading, setUserDataLoading] = useState(true);
   const [showLaunch, setShowLaunch] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [firstTime, setFirstTime] = useState(false);
@@ -26,6 +25,7 @@ function AppContent() {
   const [firstName, setFirstName] = useState('User');
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
+  const [userDataLoading, setUserDataLoading] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowLaunch(false), 900);
@@ -33,12 +33,13 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return;
     let mounted = true;
 
-    const run = async () => {
+    const loadUserData = async () => {
+      if (authLoading) return;
       setUserDataLoading(true);
 
+      // If no user yet → stay on loading until auth settles
       if (!user) {
         setNeedsProfile(false);
         setShowWelcome(false);
@@ -46,10 +47,12 @@ function AppContent() {
         return;
       }
 
-      await new Promise(r => setTimeout(r, 500));
+      // Allow Supabase triggers to commit user data
+      await new Promise(r => setTimeout(r, 600));
 
+      // Retry fetch until user row exists and has first_name
       let u = null;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         const res = await DatabaseService.getUser(user.id);
         if (res) {
           u = res;
@@ -68,10 +71,10 @@ function AppContent() {
 
       const first = u.first_name?.trim() || 'User';
       setFirstName(first);
-
       const completed = !!u.profile_completed;
       setNeedsProfile(!completed);
 
+      // Only show welcome after data and name are confirmed
       if (completed && first !== 'User') {
         setFirstTime(!u.last_login_at);
         setShowWelcome(true);
@@ -81,7 +84,7 @@ function AppContent() {
       setUserDataLoading(false);
     };
 
-    run();
+    loadUserData();
     return () => {
       mounted = false;
     };
@@ -103,6 +106,7 @@ function AppContent() {
   if (showLaunch)
     return <LaunchScreen onComplete={() => {}} />;
 
+  // ✅ Force full loading gate before DB is ready
   if (authLoading || userDataLoading)
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -119,7 +123,7 @@ function AppContent() {
   if (showWelcome)
     return <WelcomeScreen userName={firstName} onComplete={() => setShowWelcome(false)} firstTime={firstTime} />;
 
-  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
+  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0)
     return (
       <EventConfirmation
         events={extractedEvents}
@@ -133,7 +137,6 @@ function AppContent() {
         }}
       />
     );
-  }
 
   if (currentPage === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
   if (currentPage === 'account') return <AccountPage onNavigate={handleNavigate} />;
