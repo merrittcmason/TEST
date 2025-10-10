@@ -429,13 +429,12 @@ function formatDisplayTime(time: string | null, fmt: string) {
             <div className="event-details">
               <p><strong>Date:</strong> {selectedEvent.start_date}{selectedEvent.end_date && selectedEvent.end_date !== selectedEvent.start_date ? ` – ${selectedEvent.end_date}` : ''}</p>
               {!selectedEvent.all_day && (
-                <p>
-                  <strong>Time:</strong>{' '}
-                  {fromUTC(selectedEvent.start_date, selectedEvent.start_time, getDeviceTimezone()).localTime}
-{selectedEvent.end_time ? ` – ${fromUTC(selectedEvent.end_date || selectedEvent.start_date, selectedEvent.end_time, getDeviceTimezone()).localTime}` : ''}
+  <p>
+    <strong>Time:</strong>{' '}
+    {timeRange(selectedEvent)}
+  </p>
+)}
 
-                </p>
-              )}
               {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
               {selectedEvent.label && <p><strong>Label:</strong> {selectedEvent.label}</p>}
               {selectedEvent.tag && <p><strong>Tag:</strong> {selectedEvent.tag}</p>}
