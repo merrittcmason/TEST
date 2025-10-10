@@ -58,7 +58,7 @@ function AppContent() {
       if (!active) return;
       setDbUser(u);
       if (u) {
-        setFirstName(u.first_name || 'User');
+        setFirstName(u.first_name);
         setNeedsProfile(!u.profile_completed);
         if (u.profile_completed && u.first_name) {
           setFirstTime(!u.last_login_at);
