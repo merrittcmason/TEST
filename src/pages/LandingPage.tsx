@@ -1,4 +1,3 @@
-// src/pages/LandingPage.tsx
 import { useState } from 'react';
 import { HamburgerMenu } from '../components/HamburgerMenu';
 import { WeekAtAGlance } from '../components/WeekAtAGlance';
@@ -15,6 +14,7 @@ interface LandingPageProps {
 
 export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: LandingPageProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [modalActive, setModalActive] = useState(false);
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
@@ -23,28 +23,20 @@ export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: Land
 
   return (
     <div className="landing-page">
-      <HamburgerMenu onNavigate={onNavigate} />
+      {!modalActive && <HamburgerMenu onNavigate={onNavigate} />}
 
       <div className="landing-container">
         <main className="landing-content">
-          {/* 1) Week at a Glance */}
-          <WeekAtAGlance onDateClick={handleDateSelect} />
+          {!modalActive && <WeekAtAGlance onDateClick={handleDateSelect} />}
 
-          {/* 2) Calendar */}
-const [modalActive, setModalActive] = useState(false);
+          <CalendarView
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+            onEventClick={() => setModalActive(true)}
+            onModalClose={() => setModalActive(false)}
+          />
 
-<CalendarView
-  selectedDate={selectedDate}
-  onDateSelect={setSelectedDate}
-  onEventClick={(event) => { setModalActive(true); }}
-  onModalClose={() => { setModalActive(false); }}
-/>
-
-{!modalActive && <HamburgerMenu />}
-{!modalActive && <EventInput />}
-
-          {/* 3) Input method (fixed-bottom pill via CSS) */}
-          <EventInput onEventsExtracted={onEventsExtracted} />
+          {!modalActive && <EventInput onEventsExtracted={onEventsExtracted} />}
         </main>
       </div>
     </div>
