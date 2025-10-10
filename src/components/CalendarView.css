@@ -442,7 +442,7 @@
   box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.2));
 }
 
-.event-modal h3 { margin: 0 0 8px 0; color: var(--text-primary); font-size: 18px; font-weight: 800; }
+.event-modal h3 { margin: 0 0 8px 0; color: var(--text-primary); font-size: clamp(16px, 2vw, 20px); font-weight: 800; }
 .event-details p { margin: 6px 0; color: var(--text-secondary); font-size: 14px; }
 .event-details strong { color: var(--text-primary); }
 
