@@ -2,6 +2,45 @@
   --day-min: clamp(56px, 11vw, 120px);
   --gap: clamp(3px, 1vw, 8px);
 }
+@media (max-width: 1200px) {
+  html {
+    font-size: 15px;
+  }
+  .calendar-view {
+    transform: scale(0.95);
+    transform-origin: top center;
+  }
+}
+
+@media (max-width: 900px) {
+  html {
+    font-size: 14px;
+  }
+  .calendar-view {
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
+}
+
+@media (max-width: 700px) {
+  html {
+    font-size: 13px;
+  }
+  .calendar-view {
+    transform: scale(0.85);
+    transform-origin: top center;
+  }
+}
+
+@media (max-width: 500px) {
+  html {
+    font-size: 12px;
+  }
+  .calendar-view {
+    transform: scale(0.8);
+    transform-origin: top center;
+  }
+}
 
 :root[data-theme='dark'] {
   --bg-primary: #0b0b0c;
