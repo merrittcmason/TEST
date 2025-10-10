@@ -283,7 +283,7 @@
 .day-event-more {
   text-align: left;
   width: 100%;
-  font-size: clamp(9px, 1.7vw, 11px);
+  font-size: clamp(9px, 1.2vw, 13px);
   color: var(--text-tertiary);
   padding: clamp(1px, 0.3vw, 4px) clamp(2px, 0.6vw, 8px);
 }
