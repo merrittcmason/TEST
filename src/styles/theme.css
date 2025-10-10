@@ -40,6 +40,18 @@
   --scrollbar-thumb: rgba(255,255,255,.25);
   --scrollbar-thumb-hover: rgba(255,255,255,.4);
 }
+:root {
+  --content-max: 960px;
+  --content-vw: 92vw;
+  --content-pad: 16px;
+}
+
+.app-shell {
+  width: min(var(--content-max), var(--content-vw));
+  margin: 0 auto;
+  padding-inline: var(--content-pad);
+  box-sizing: border-box;
+}
 
 :root[data-theme='light'] {
   --bg-primary: #ffffff;
