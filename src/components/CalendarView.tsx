@@ -4,7 +4,9 @@ import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import type { Database } from '../lib/supabase';
 import './CalendarView.css';
-import { fromUTC, getDeviceTimezone } from '../utils/timeUtils'
+import { fromUTC } from '../utils/timeUtils'
+import { DatabaseService } from '../services/database'
+
 
 type Event = Database['public']['Tables']['events']['Row'];
 
