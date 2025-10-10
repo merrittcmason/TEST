@@ -23,12 +23,6 @@
   .calendar-view { transform: scale(0.92); transform-origin: top center; }
 }
 
-.calendar-view {
-  width: min(1200px, 90vw);
-  margin: 0 auto;
-}
-
-
 :root[data-theme='dark'] {
   --bg-primary: #0b0b0c;
   --bg-secondary: #121214;
