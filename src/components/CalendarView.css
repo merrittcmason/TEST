@@ -230,6 +230,7 @@
   align-items: flex-start;
   position: relative;
   overflow: hidden;
+  min-height: calc(var(--day-min) * 1.5);
 }
 
 .calendar-day:nth-child(7n) { border-right: 0; }
