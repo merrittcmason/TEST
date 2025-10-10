@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ModeProvider } from './contexts/ModeContext';
 import { LaunchScreen } from './components/LaunchScreen';
@@ -20,45 +20,52 @@ function AppContent() {
   const { user, loading: authLoading } = useAuth();
   const [showLaunch, setShowLaunch] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [firstTime, setFirstTime] = useState(false);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [firstName, setFirstName] = useState('User');
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
 
   useEffect(() => {
-    let mounted = true;
-    const run = async () => {
-      await new Promise(r => setTimeout(r, 900));
-      if (!mounted) return;
-      setShowLaunch(false);
-    };
-    run();
-    return () => { mounted = false; };
+    const timer = setTimeout(() => setShowLaunch(false), 900);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     let mounted = true;
+
     const run = async () => {
       if (!user) {
         setNeedsProfile(false);
         setShowWelcome(false);
         return;
       }
+
       const u = await DatabaseService.getUser(user.id);
       if (!mounted) return;
-      if (u?.first_name) setFirstName(u.first_name);
-      setNeedsProfile(!u?.profile_completed);
-      if (u?.profile_completed) {
+
+      setFirstName(u?.first_name || 'User');
+
+      if (!u?.profile_completed) {
+        setNeedsProfile(true);
+      } else {
+        setNeedsProfile(false);
+        setFirstTime(!u?.last_login_at);
         setShowWelcome(true);
-        setTimeout(() => { if (mounted) setShowWelcome(false); }, 1600);
+        setTimeout(() => mounted && setShowWelcome(false), 1600);
       }
     };
-    if (!authLoading) run();
-    return () => { mounted = false; };
+
+    run();
+    return () => {
+      mounted = false;
+    };
   }, [user, authLoading]);
 
   const handleProfileDone = () => {
     setNeedsProfile(false);
+    setFirstTime(true);
     setShowWelcome(true);
     setTimeout(() => setShowWelcome(false), 1600);
   };
@@ -70,25 +77,39 @@ function AppContent() {
     setCurrentPage('eventConfirmation');
   };
 
-  if (showLaunch) return <LaunchScreen onComplete={() => {}} />;
+  if (showLaunch)
+    return <LaunchScreen onComplete={() => {}} />;
 
-  if (authLoading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}><div className="loading-spinner" /></div>;
+  if (authLoading)
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div className="loading-spinner" />
+      </div>
+    );
 
-  if (!user) return <AuthPage />;
+  if (!user)
+    return <AuthPage />;
 
-  if (needsProfile) return <CompleteProfilePage onDone={handleProfileDone} />;
+  if (needsProfile)
+    return <CompleteProfilePage onDone={handleProfileDone} />;
 
-  if (showWelcome) return <WelcomeScreen userName={firstName || 'User'} onComplete={() => setShowWelcome(false)} firstTime={false} />;
+  if (showWelcome)
+    return <WelcomeScreen firstName={firstName} onComplete={() => setShowWelcome(false)} firstTime={firstTime} />;
 
-  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0) {
-    return <EventConfirmation events={extractedEvents} onConfirm={()=>{ setExtractedEvents([]); setCurrentPage('landing'); }} onCancel={()=>{ setExtractedEvents([]); setCurrentPage('landing'); }} />;
-  }
+  if (currentPage === 'eventConfirmation' && extractedEvents.length > 0)
+    return (
+      <EventConfirmation
+        events={extractedEvents}
+        onConfirm={() => { setExtractedEvents([]); setCurrentPage('landing'); }}
+        onCancel={() => { setExtractedEvents([]); setCurrentPage('landing'); }}
+      />
+    );
 
   if (currentPage === 'settings') return <SettingsPage onNavigate={handleNavigate} />;
   if (currentPage === 'account') return <AccountPage onNavigate={handleNavigate} />;
   if (currentPage === 'subscription') return <SubscriptionPage onNavigate={handleNavigate} />;
 
-  return <LandingPage onNavigate={handleNavigate} onDateClick={()=>{}} onEventsExtracted={handleEventsExtracted} />;
+  return <LandingPage onNavigate={handleNavigate} onDateClick={() => {}} onEventsExtracted={handleEventsExtracted} />;
 }
 
 export default function App() {
