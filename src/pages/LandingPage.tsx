@@ -31,11 +31,17 @@ export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: Land
           <WeekAtAGlance onDateClick={handleDateSelect} />
 
           {/* 2) Calendar */}
-          <CalendarView
-            selectedDate={selectedDate}
-            onDateSelect={handleDateSelect}
-            onEventClick={() => {}}
-          />
+const [modalActive, setModalActive] = useState(false);
+
+<CalendarView
+  selectedDate={selectedDate}
+  onDateSelect={setSelectedDate}
+  onEventClick={(event) => { setModalActive(true); }}
+  onModalClose={() => { setModalActive(false); }}
+/>
+
+{!modalActive && <HamburgerMenu />}
+{!modalActive && <EventInput />}
 
           {/* 3) Input method (fixed-bottom pill via CSS) */}
           <EventInput onEventsExtracted={onEventsExtracted} />
