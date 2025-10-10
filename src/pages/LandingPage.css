@@ -37,3 +37,33 @@
     font-size: 2.5rem;
   }
 }
+.landing-page, .landing-container, .landing-content { padding: 0; }
+
+.stack { display: grid; gap: clamp(12px, 2.5vw, 20px); }
+
+.fullbleed {
+  width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
+.section-pad {
+  padding-inline: clamp(8px, 2.4vw, 16px);
+}
+
+.section-surface {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.section-surface > * {
+  width: 100%;
+}
+
+/* Safety: ensure each component fills the surface width */
+.week-at-a-glance,
+.calendar-view,
+.event-input-root {
+  width: 100%;
+  display: block;
+}
