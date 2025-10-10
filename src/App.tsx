@@ -26,8 +26,8 @@ function AppContent() {
   const [firstName, setFirstName] = useState('User');
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
-  const [userDataLoading, setUserDataLoading] = useState(true);
-  const [sessionReady, setSessionReady] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [dbUser, setDbUser] = useState<any>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowLaunch(false), 900);
@@ -35,59 +35,43 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    const checkSession = async () => {
+    const initialize = async () => {
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 200));
       }
-      setSessionReady(true);
+      setReady(true);
     };
-    checkSession();
+    initialize();
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    const loadUserData = async () => {
-      if (authLoading || !sessionReady) return;
-      setUserDataLoading(true);
+    let active = true;
+    const load = async () => {
       if (!user) {
         setNeedsProfile(false);
         setShowWelcome(false);
-        setUserDataLoading(false);
+        setDbUser(null);
         return;
       }
-      await new Promise(r => setTimeout(r, 400));
-      let u = null;
-      for (let i = 0; i < 5; i++) {
-        const res = await DatabaseService.getUser(user.id);
-        if (res) {
-          u = res;
-          break;
+      const u = await DatabaseService.getUser(user.id);
+      if (!active) return;
+      setDbUser(u);
+      if (u) {
+        setFirstName(u.first_name || 'User');
+        setNeedsProfile(!u.profile_completed);
+        if (u.profile_completed && u.first_name) {
+          setFirstTime(!u.last_login_at);
+          setShowWelcome(true);
+          setTimeout(() => active && setShowWelcome(false), 1600);
         }
-        await new Promise(r => setTimeout(r, 250));
       }
-      if (!mounted) return;
-      if (!u) {
-        setNeedsProfile(true);
-        setUserDataLoading(false);
-        return;
-      }
-      const first = u.first_name?.trim() || 'User';
-      setFirstName(first);
-      const completed = !!u.profile_completed;
-      setNeedsProfile(!completed);
-      if (completed && first !== 'User') {
-        setFirstTime(!u.last_login_at);
-        setShowWelcome(true);
-        setTimeout(() => mounted && setShowWelcome(false), 1600);
-      }
-      setUserDataLoading(false);
     };
-    loadUserData();
+    if (ready && !authLoading) load();
     return () => {
-      mounted = false;
+      active = false;
     };
-  }, [user, authLoading, sessionReady]);
+  }, [user, ready, authLoading]);
 
   const handleProfileDone = () => {
     setNeedsProfile(false);
@@ -104,14 +88,23 @@ function AppContent() {
 
   if (showLaunch) return <LaunchScreen onComplete={() => {}} />;
 
-  if (authLoading || !sessionReady || userDataLoading)
+  if (!ready || authLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
         <div className="loading-spinner" />
       </div>
     );
+  }
 
   if (!user) return <AuthPage />;
+
+  if (!dbUser) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
 
   if (needsProfile) return <CompleteProfilePage onDone={handleProfileDone} />;
 
