@@ -114,15 +114,34 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
 
 const timeRange = (e: Event) => {
   if (e.all_day) return 'All day'
-  const tz = getDeviceTimezone()
+  const tz = userPrefs?.timezone_preference || Intl.DateTimeFormat().resolvedOptions().timeZone
+  const use24h = userPrefs?.time_format_preference === '24'
+  const use12h = userPrefs?.time_format_preference === '12'
+  const fmt = use24h ? 'HH:mm' : 'h:mm a'
+
   if (e.start_time && e.end_time) {
     const s = fromUTC(e.start_date, e.start_time, tz).localTime
     const en = fromUTC(e.end_date || e.start_date, e.end_time, tz).localTime
-    return `${s} – ${en}`
+    return `${formatDisplayTime(s, fmt)} – ${formatDisplayTime(en, fmt)}`
   }
-  if (e.start_time) return fromUTC(e.start_date, e.start_time, tz).localTime
+  if (e.start_time) {
+    const s = fromUTC(e.start_date, e.start_time, tz).localTime
+    return formatDisplayTime(s, fmt)
+  }
   return ''
 }
+
+function formatDisplayTime(time: string | null, fmt: string) {
+  if (!time) return ''
+  const [h, m] = time.split(':')
+  const d = new Date(2000, 0, 1, parseInt(h), parseInt(m))
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: fmt === 'h:mm a'
+  }).format(d)
+}
+
 
 
   const handlePrevMonth = () => {
