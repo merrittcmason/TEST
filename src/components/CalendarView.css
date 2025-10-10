@@ -540,3 +540,17 @@
   .label-filter { width: 100%; }
   .calendar-day:hover { transform: none; }
 }
+/* Force modals above everything */
+.day-detail-overlay,
+.event-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000; /* higher than Hamburger/EventInput */
+}
+
+/* Hide global “always-on-top” elements while a modal is open */
+.app-modal-open .hamburger-menu,
+.app-modal-open .event-input,
+.app-modal-open .event-input-wrap {
+  display: none !important;
+}
