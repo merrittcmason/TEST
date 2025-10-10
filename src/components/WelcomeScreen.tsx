@@ -2,19 +2,22 @@ import { useEffect } from 'react';
 import './WelcomeScreen.css';
 
 interface WelcomeScreenProps {
-  userName: string;
+  firstName: string;
   onComplete: () => void;
   firstTime?: boolean;
 }
 
-export function WelcomeScreen({ userName, onComplete, firstTime = false }: WelcomeScreenProps) {
+export function WelcomeScreen({ firstName, onComplete, firstTime = false }: WelcomeScreenProps) {
   useEffect(() => {
     const t = setTimeout(onComplete, 1600);
     return () => clearTimeout(t);
   }, [onComplete]);
+
   return (
     <div className="welcome-screen">
-      <h1 className="welcome-text">{firstTime ? `Welcome ${userName}!` : `Welcome back, ${userName}!`}</h1>
+      <h1 className="welcome-text">
+        {firstTime ? `Welcome ${firstName}!` : `Welcome back, ${firstName}!`}
+      </h1>
     </div>
   );
 }
