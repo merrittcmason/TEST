@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import type { Database } from '../lib/supabase';
 
 type User = Database['public']['Tables']['users']['Row'];
+type UserInsert = Database['public']['Tables']['users']['Insert'];
 type UserUpdate = Database['public']['Tables']['users']['Update'];
 type Event = Database['public']['Tables']['events']['Row'];
 type EventInsert = Database['public']['Tables']['events']['Insert'];
@@ -66,6 +67,48 @@ export class DatabaseService {
     const { data, error } = await supabase.from('user_prefs').update(updates).eq('user_id', userId).select().single();
     if (error) throw error;
     return data as UserPrefsRow;
+  }
+
+  static async upsertUserOnSignup(input: {
+    email: string;
+    username: string;
+    dob: string | null;
+    marketingOptIn: boolean;
+    tosAgreed: boolean;
+    privacyAgreed: boolean;
+    provider: 'password' | 'google' | 'github' | 'apple';
+  }): Promise<User> {
+    const uid = await getCurrentUserId();
+    const now = new Date().toISOString();
+    const { data: existing } = await supabase.from('users').select('id').eq('id', uid).maybeSingle();
+    const payload: UserInsert = {
+      id: uid,
+      email: input.email,
+      username: input.username || null,
+      dob: input.dob,
+      plan_type: 'free',
+      marketing_opt_in: !!input.marketingOptIn,
+      tos_agreed_at: input.tosAgreed ? now : null,
+      privacy_agreed_at: input.privacyAgreed ? now : null,
+      account_provider: input.provider,
+      profile_completed: false,
+      first_login_at: now,
+      last_login_at: now
+    };
+    if (existing) {
+      const { data, error } = await supabase.from('users').update(payload as UserUpdate).eq('id', uid).select().single();
+      if (error) throw error;
+      return data as User;
+    } else {
+      const { data, error } = await supabase.from('users').insert(payload).select().single();
+      if (error) throw error;
+      return data as User;
+    }
+  }
+
+  static async touchLastLogin(userId: string): Promise<void> {
+    const { error } = await supabase.from('users').update({ last_login_at: new Date().toISOString() }).eq('id', userId);
+    if (error) throw error;
   }
 
   static async getEvents(userId: string, startDate?: string, endDate?: string, label?: string): Promise<Event[]> {
