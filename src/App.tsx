@@ -18,6 +18,7 @@ type Page = 'landing' | 'settings' | 'account' | 'subscription' | 'eventConfirma
 
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
+
   const [showLaunch, setShowLaunch] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   const [firstTime, setFirstTime] = useState(false);
@@ -26,20 +27,30 @@ function AppContent() {
   const [extractedEvents, setExtractedEvents] = useState<ParsedEvent[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [userDataLoading, setUserDataLoading] = useState(true);
+  const [authTransitioning, setAuthTransitioning] = useState(false);
 
+  // Handle the app launch splash
   useEffect(() => {
     const timer = setTimeout(() => setShowLaunch(false), 900);
     return () => clearTimeout(timer);
   }, []);
 
+  // Detect sign-in / sign-out transitions
+  useEffect(() => {
+    // whenever user changes, mark transition state for 600ms
+    setAuthTransitioning(true);
+    const t = setTimeout(() => setAuthTransitioning(false), 600);
+    return () => clearTimeout(t);
+  }, [user]);
+
+  // Load user record
   useEffect(() => {
     let mounted = true;
 
     const loadUserData = async () => {
-      if (authLoading) return;
+      if (authLoading || authTransitioning) return;
       setUserDataLoading(true);
 
-      // If no user yet → stay on loading until auth settles
       if (!user) {
         setNeedsProfile(false);
         setShowWelcome(false);
@@ -47,10 +58,9 @@ function AppContent() {
         return;
       }
 
-      // Allow Supabase triggers to commit user data
+      // slight wait to let Supabase sync triggers
       await new Promise(r => setTimeout(r, 600));
 
-      // Retry fetch until user row exists and has first_name
       let u = null;
       for (let i = 0; i < 4; i++) {
         const res = await DatabaseService.getUser(user.id);
@@ -74,7 +84,6 @@ function AppContent() {
       const completed = !!u.profile_completed;
       setNeedsProfile(!completed);
 
-      // Only show welcome after data and name are confirmed
       if (completed && first !== 'User') {
         setFirstTime(!u.last_login_at);
         setShowWelcome(true);
@@ -88,7 +97,7 @@ function AppContent() {
     return () => {
       mounted = false;
     };
-  }, [user, authLoading]);
+  }, [user, authLoading, authTransitioning]);
 
   const handleProfileDone = () => {
     setNeedsProfile(false);
@@ -103,11 +112,12 @@ function AppContent() {
     setCurrentPage('eventConfirmation');
   };
 
+  // --- render gates ---
   if (showLaunch)
     return <LaunchScreen onComplete={() => {}} />;
 
-  // ✅ Force full loading gate before DB is ready
-  if (authLoading || userDataLoading)
+  // Block until auth & DB user both resolved and transition cooldown ends
+  if (authLoading || userDataLoading || authTransitioning)
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
         <div className="loading-spinner" />
