@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { DatabaseService } from '../services/database';
 import './AuthPage.css';
 
 function scorePassword(pw: string) {
@@ -17,12 +18,10 @@ function scorePassword(pw: string) {
 
 export function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [signinError, setSigninError] = useState('');
   const [loading, setLoading] = useState(false);
-
   const [username, setUsername] = useState('');
   const [email2, setEmail2] = useState('');
   const [pw1, setPw1] = useState('');
@@ -34,7 +33,6 @@ export function AuthPage() {
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [optInEmail, setOptInEmail] = useState(false);
   const [signupError, setSignupError] = useState('');
-
   const { signIn, signUp, signInWithOAuth } = useAuth();
 
   const pwStrength = useMemo(() => scorePassword(pw1), [pw1]);
@@ -67,7 +65,17 @@ export function AuthPage() {
       if (mode === 'signin') {
         await signIn(email, password);
       } else {
-        await signUp(email2, pw1, username.trim());
+        const dob = `${dobYear.padStart(4, '0')}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`;
+        await signUp(email2.trim(), pw1, username.trim());
+        await DatabaseService.upsertUserOnSignup({
+          email: email2.trim(),
+          username: username.trim(),
+          dob,
+          marketingOptIn: optInEmail,
+          tosAgreed: agreeTos,
+          privacyAgreed: agreePrivacy,
+          provider: 'password'
+        });
       }
     } catch (err: any) {
       if (mode === 'signin') setSigninError(err?.message || 'An error occurred');
