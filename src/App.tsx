@@ -37,9 +37,7 @@ function AppContent() {
   useEffect(() => {
     const initialize = async () => {
       const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        await new Promise(r => setTimeout(r, 200));
-      }
+      if (data.session) await new Promise(r => setTimeout(r, 200));
       setReady(true);
     };
     initialize();
@@ -62,9 +60,9 @@ function AppContent() {
         return;
       }
       setDbUser(u);
-      setFirstName(u.first_name || 'User');
+      setFirstName(u.first_name?.trim() || 'User');
       setNeedsProfile(!u.profile_completed);
-      if (u.profile_completed && u.first_name) {
+      if (u.profile_completed) {
         setFirstTime(!u.last_login_at);
         setShowWelcome(true);
         setTimeout(() => active && setShowWelcome(false), 3000);
@@ -112,7 +110,7 @@ function AppContent() {
   if (needsProfile) return <CompleteProfilePage onDone={handleProfileDone} />;
 
   if (showWelcome)
-    return <WelcomeScreen userName={firstName} onComplete={() => setShowWelcome(false)} firstTime={firstTime} />;
+    return <WelcomeScreen firstName={firstName} onComplete={() => setShowWelcome(false)} firstTime={firstTime} />;
 
   if (currentPage === 'eventConfirmation' && extractedEvents.length > 0)
     return (
