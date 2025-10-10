@@ -379,7 +379,7 @@
 }
 
 .event-card-details { display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.event-card-name { font-size: clamp(13px, 2.4vw, 16px); font-weight: 800; color: var(--text-primary); line-height: 1.3; }
+.event-card-name { font-size: clamp(13px, 2vw, 18px); font-weight: 800; color: var(--text-primary); line-height: 1.3; }
 
 .event-card-sub { display: flex; flex-wrap: wrap; gap: 6px; }
 
