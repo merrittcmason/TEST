@@ -97,16 +97,18 @@ export function CalendarView({ selectedDate, onDateSelect, onEventClick }: Calen
     return events.filter(event => event.start_date === dateStr || event.end_date === dateStr);
   };
 
-  const timeRange = (e: Event) => {
-    if (e.all_day) return 'All day';
-    if (e.start_time && e.end_time) {
-      const s = format(new Date(`2000-01-01T${e.start_time}`), 'h:mm a');
-      const en = format(new Date(`2000-01-01T${e.end_time}`), 'h:mm a');
-      return `${s} – ${en}`;
-    }
-    if (e.start_time) return format(new Date(`2000-01-01T${e.start_time}`), 'h:mm a');
-    return '';
-    };
+const timeRange = (e: Event) => {
+  if (e.all_day) return 'All day'
+  const tz = getDeviceTimezone()
+  if (e.start_time && e.end_time) {
+    const s = fromUTC(e.start_date, e.start_time, tz).localTime
+    const en = fromUTC(e.end_date || e.start_date, e.end_time, tz).localTime
+    return `${s} – ${en}`
+  }
+  if (e.start_time) return fromUTC(e.start_date, e.start_time, tz).localTime
+  return ''
+}
+
 
   const handlePrevMonth = () => {
     const y = currentMonth.getFullYear();
