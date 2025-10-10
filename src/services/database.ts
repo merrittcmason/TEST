@@ -69,6 +69,25 @@ export class DatabaseService {
     return data as UserPrefsRow;
   }
 
+  static async ensureUserRecord(userId: string): Promise<void> {
+    const { data: existing, error: selErr } = await supabase.from('users').select('id').eq('id', userId).maybeSingle();
+    if (selErr) throw selErr;
+    if (existing) return;
+    const { data: gu } = await supabase.auth.getUser();
+    const email = gu?.user?.email ?? null;
+    const now = new Date().toISOString();
+    const payload: UserInsert = {
+      id: userId,
+      email,
+      plan_type: 'free',
+      profile_completed: false,
+      first_login_at: now,
+      last_login_at: now
+    };
+    const { error: insErr } = await supabase.from('users').insert(payload);
+    if (insErr) throw insErr;
+  }
+
   static async upsertUserOnSignup(input: {
     email: string;
     username: string;
@@ -80,9 +99,28 @@ export class DatabaseService {
   }): Promise<User> {
     const uid = await getCurrentUserId();
     const now = new Date().toISOString();
-    const { data: existing } = await supabase.from('users').select('id').eq('id', uid).maybeSingle();
-    const payload: UserInsert = {
-      id: uid,
+    const { data: existing, error: selErr } = await supabase.from('users').select('id, first_login_at').eq('id', uid).maybeSingle();
+    if (selErr) throw selErr;
+    if (!existing) {
+      const insertPayload: UserInsert = {
+        id: uid,
+        email: input.email,
+        username: input.username || null,
+        dob: input.dob,
+        plan_type: 'free',
+        marketing_opt_in: !!input.marketingOptIn,
+        tos_agreed_at: input.tosAgreed ? now : null,
+        privacy_agreed_at: input.privacyAgreed ? now : null,
+        account_provider: input.provider,
+        profile_completed: false,
+        first_login_at: now,
+        last_login_at: now
+      };
+      const { data, error } = await supabase.from('users').insert(insertPayload).select().single();
+      if (error) throw error;
+      return data as User;
+    }
+    const updatePayload: UserUpdate = {
       email: input.email,
       username: input.username || null,
       dob: input.dob,
@@ -92,18 +130,60 @@ export class DatabaseService {
       privacy_agreed_at: input.privacyAgreed ? now : null,
       account_provider: input.provider,
       profile_completed: false,
-      first_login_at: now,
       last_login_at: now
     };
-    if (existing) {
-      const { data, error } = await supabase.from('users').update(payload as UserUpdate).eq('id', uid).select().single();
-      if (error) throw error;
-      return data as User;
-    } else {
-      const { data, error } = await supabase.from('users').insert(payload).select().single();
+    const { data, error } = await supabase.from('users').update(updatePayload).eq('id', uid).select().single();
+    if (error) throw error;
+    return data as User;
+  }
+
+  static async upsertUserOnSignupWithId(params: {
+    userId: string;
+    email: string | null;
+    username: string | null;
+    dob: string | null;
+    marketingOptIn: boolean;
+    tosAgreed: boolean;
+    privacyAgreed: boolean;
+    provider: 'password' | 'google' | 'github' | 'apple';
+  }): Promise<User> {
+    const now = new Date().toISOString();
+    const { data: existing, error: selErr } = await supabase.from('users').select('id, first_login_at').eq('id', params.userId).maybeSingle();
+    if (selErr) throw selErr;
+    if (!existing) {
+      const insertPayload: UserInsert = {
+        id: params.userId,
+        email: params.email,
+        username: params.username,
+        dob: params.dob,
+        plan_type: 'free',
+        marketing_opt_in: !!params.marketingOptIn,
+        tos_agreed_at: params.tosAgreed ? now : null,
+        privacy_agreed_at: params.privacyAgreed ? now : null,
+        account_provider: params.provider,
+        profile_completed: false,
+        first_login_at: now,
+        last_login_at: now
+      };
+      const { data, error } = await supabase.from('users').insert(insertPayload).select().single();
       if (error) throw error;
       return data as User;
     }
+    const updatePayload: UserUpdate = {
+      email: params.email,
+      username: params.username,
+      dob: params.dob,
+      plan_type: 'free',
+      marketing_opt_in: !!params.marketingOptIn,
+      tos_agreed_at: params.tosAgreed ? now : null,
+      privacy_agreed_at: params.privacyAgreed ? now : null,
+      account_provider: params.provider,
+      profile_completed: false,
+      last_login_at: now
+    };
+    const { data, error } = await supabase.from('users').update(updatePayload).eq('id', params.userId).select().single();
+    if (error) throw error;
+    return data as User;
   }
 
   static async touchLastLogin(userId: string): Promise<void> {
@@ -112,12 +192,7 @@ export class DatabaseService {
   }
 
   static async getEvents(userId: string, startDate?: string, endDate?: string, label?: string): Promise<Event[]> {
-    let query = supabase
-      .from('events')
-      .select('*')
-      .eq('user_id', userId)
-      .order('start_date', { ascending: true })
-      .order('start_time', { ascending: true, nullsFirst: false });
+    let query = supabase.from('events').select('*').eq('user_id', userId).order('start_date', { ascending: true }).order('start_time', { ascending: true, nullsFirst: false });
     if (startDate) query = query.gte('start_date', startDate);
     if (endDate) query = query.lte('end_date', endDate);
     if (label) query = query.eq('label', label);
