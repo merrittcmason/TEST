@@ -445,7 +445,6 @@
 }
 .edit-actions-right { display: contents; }
 
-
 .edit-actions .btn {
   min-width: clamp(100px, 16vw, 140px);
   height: clamp(34px, 5vw, 42px);
