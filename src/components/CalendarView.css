@@ -519,3 +519,4 @@
   .label-filter { width: 100%; }
   .calendar-day:hover { transform: none; }
 }
+.landing-rail .calendar-view { transform: none !important; }
