@@ -398,7 +398,8 @@ const timeRange = (e: Event) => {
                 <p>
                   <strong>Time:</strong>{' '}
                   {selectedEvent.start_time ? format(new Date(`2000-01-01T${selectedEvent.start_time}`), 'h:mm a') : ''}
-                  {selectedEvent.end_time ? ` – ${format(new Date(`2000-01-01T${selectedEvent.end_time}`), 'h:mm a')}` : ''}
+{selectedEvent.end_time ? ` – ${format(new Date(`2000-01-01T${selectedEvent.end_time}`), 'h:mm a')}` : ''}
+
                 </p>
               )}
               {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
