@@ -9,24 +9,13 @@ type EventUpdate = Database['public']['Tables']['events']['Update'];
 type TokenUsage = Database['public']['Tables']['token_usage']['Row'];
 type UploadQuota = Database['public']['Tables']['upload_quotas']['Row'];
 type Subscription = Database['public']['Tables']['subscriptions']['Row'];
+type SubscriptionInsert = Database['public']['Tables']['subscriptions']['Insert'];
+type SubscriptionUpdate = Database['public']['Tables']['subscriptions']['Update'];
 type DraftEventRow = Database['public']['Tables']['draft_events']['Row'];
 type DraftEventInsert = Database['public']['Tables']['draft_events']['Insert'];
-
-type UserPrefs = {
-  user_id: string;
-  timezone_preference: string | null;
-  time_format_preference: 'auto' | '12' | '24' | null;
-  tz_mode: 'auto' | 'manual' | null;
-  theme_preference: 'system' | 'light' | 'dark' | null;
-  default_view: 'month' | 'week' | null;
-  week_start: 'sunday' | 'monday' | null;
-  reminders_enabled: boolean;
-  daily_summary_enabled: boolean;
-  mode: 'personal' | 'education' | 'business' | 'enterprise' | null;
-  display_time_zone?: string | null;
-  hour_cycle?: string | null;
-  date_format?: string | null;
-};
+type UserPrefsRow = Database['public']['Tables']['user_prefs']['Row'];
+type UserPrefsInsert = Database['public']['Tables']['user_prefs']['Insert'];
+type UserPrefsUpdate = Database['public']['Tables']['user_prefs']['Update'];
 
 async function getCurrentUserId(): Promise<string> {
   const { data: { user }, error } = await supabase.auth.getUser();
@@ -60,27 +49,32 @@ export class DatabaseService {
     return data;
   }
 
-  static async getUserPreferences(userId: string): Promise<UserPrefs | null> {
+  static async getUserPreferences(userId: string): Promise<UserPrefsRow | null> {
     const { data, error } = await supabase.from('user_prefs').select('*').eq('user_id', userId).maybeSingle();
     if (error) throw error;
-    return data as any;
+    return data;
   }
 
-  static async updateUserPreferences(userId: string, updates: Partial<UserPrefs>): Promise<UserPrefs> {
+  static async updateUserPreferences(userId: string, updates: UserPrefsUpdate): Promise<UserPrefsRow> {
     const existing = await this.getUserPreferences(userId);
     if (!existing) {
-      const insertPayload = { user_id: userId, ...updates } as any;
+      const insertPayload: UserPrefsInsert = { user_id: userId, ...updates };
       const { data, error } = await supabase.from('user_prefs').insert(insertPayload).select().single();
       if (error) throw error;
-      return data as any;
+      return data as UserPrefsRow;
     }
-    const { data, error } = await supabase.from('user_prefs').update(updates as any).eq('user_id', userId).select().single();
+    const { data, error } = await supabase.from('user_prefs').update(updates).eq('user_id', userId).select().single();
     if (error) throw error;
-    return data as any;
+    return data as UserPrefsRow;
   }
 
   static async getEvents(userId: string, startDate?: string, endDate?: string, label?: string): Promise<Event[]> {
-    let query = supabase.from('events').select('*').eq('user_id', userId).order('start_date', { ascending: true }).order('start_time', { ascending: true, nullsFirst: false });
+    let query = supabase
+      .from('events')
+      .select('*')
+      .eq('user_id', userId)
+      .order('start_date', { ascending: true })
+      .order('start_time', { ascending: true, nullsFirst: false });
     if (startDate) query = query.gte('start_date', startDate);
     if (endDate) query = query.lte('end_date', endDate);
     if (label) query = query.eq('label', label);
@@ -148,13 +142,13 @@ export class DatabaseService {
     return data;
   }
 
-  static async createSubscription(subscription: Database['public']['Tables']['subscriptions']['Insert']): Promise<Subscription> {
+  static async createSubscription(subscription: SubscriptionInsert): Promise<Subscription> {
     const { data, error } = await supabase.from('subscriptions').insert(subscription).select().single();
     if (error) throw error;
     return data as Subscription;
   }
 
-  static async updateSubscription(subscriptionId: string, updates: Database['public']['Tables']['subscriptions']['Update']): Promise<Subscription> {
+  static async updateSubscription(subscriptionId: string, updates: SubscriptionUpdate): Promise<Subscription> {
     const { data, error } = await supabase.from('subscriptions').update(updates).eq('id', subscriptionId).select().single();
     if (error) throw error;
     return data as Subscription;
