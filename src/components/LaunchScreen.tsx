@@ -9,6 +9,10 @@ export function LaunchScreen({ onComplete }: LaunchScreenProps) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
+    const steps = 100;
+    const totalDuration = 1800;
+    const intervalTime = totalDuration / steps;
+
     const interval = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
@@ -16,9 +20,9 @@ export function LaunchScreen({ onComplete }: LaunchScreenProps) {
           setTimeout(onComplete, 300);
           return 100;
         }
-        return prev + 10;
+        return prev + 1;
       });
-    }, 100);
+    }, intervalTime);
 
     return () => clearInterval(interval);
   }, [onComplete]);
