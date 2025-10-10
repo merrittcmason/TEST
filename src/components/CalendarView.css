@@ -184,8 +184,8 @@
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: var(--gap);
-  margin-bottom: var(--gap);
+  gap: 0;
+  margin-bottom: 6px;
 }
 .calendar-weekday {
   text-align: center;
