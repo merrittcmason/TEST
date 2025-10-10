@@ -1,64 +1,67 @@
-import { createContext, useCallback, useContext, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+// src/contexts/AuthContext.tsx
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { User } from '@supabase/supabase-js';
+import { AuthService } from '../services/auth';
 
-type OAuthProvider = 'google' | 'github' | 'apple'
-
-type AuthApi = {
-  signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, username?: string) => Promise<void>
-  signInWithOAuth: (provider: OAuthProvider) => Promise<void>
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  signUp: (email: string, password: string, name?: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signInWithOAuth: (provider: 'google' | 'github' | 'apple') => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-const Ctx = createContext<AuthApi | null>(null)
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL as string,
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string
-)
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-  }, [])
+  useEffect(() => {
+    AuthService.getCurrentUser().then((u) => {
+      setUser(u);
+      setLoading(false);
+    });
 
-  const signInWithOAuth = useCallback(async (provider: OAuthProvider) => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: window.location.origin }
-    })
-    if (error) throw error
-  }, [])
+    const { data: { subscription } } = AuthService.onAuthStateChange((_event, u) => {
+      setUser(u);
+      setLoading(false);
+    });
 
-  const signUp = useCallback(async (email: string, password: string, username?: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { username } }
-    })
-    if (error) throw error
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
-    const user = data.user
-    if (!user) return
+  const signUp = async (email: string, password: string, name?: string) => {
+    sessionStorage.setItem('skipLaunchOnce', '1');
+    await AuthService.signUp(email, password, name);
+  };
 
-    const { error: insertErr } = await supabase.from('users').insert({
-      id: user.id,
-      email: user.email,
-      username: username || null,
-      plan_type: 'free',
-      marketing_opt_in: false
-    })
-    if (insertErr && insertErr.code !== '23505') throw insertErr
-  }, [])
+  const signIn = async (email: string, password: string) => {
+    sessionStorage.setItem('skipLaunchOnce', '1');
+    await AuthService.signIn(email, password);
+  };
 
-  const value = useMemo(() => ({ signIn, signUp, signInWithOAuth }), [signIn, signUp, signInWithOAuth])
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  const signInWithOAuth = async (provider: 'google' | 'github' | 'apple') => {
+    sessionStorage.setItem('skipLaunchOnce', '1');
+    await AuthService.signInWithOAuth(provider);
+  };
+
+  const signOut = async () => {
+    await AuthService.signOut();
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signInWithOAuth, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-  const ctx = useContext(Ctx)
-  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>')
-  return ctx
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 }
-
-export default AuthProvider
