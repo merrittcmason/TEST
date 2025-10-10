@@ -108,28 +108,32 @@ export function AuthPage() {
             <form onSubmit={handleSubmit} className="auth-form" autoComplete="off">
               <div className="form-group">
                 <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  required
-                />
+                <div className="auth-input">
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="form-group">
                 <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                />
+                <div className="auth-input">
+                  <input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                  />
+                </div>
               </div>
 
               {signinError && <div className="auth-error">{signinError}</div>}
@@ -183,6 +187,7 @@ export function AuthPage() {
 
             <div className="auth-alt">
               <div className="create-account-row">
+                <span className="create-account-text">Don’t have an account?</span>
                 <button type="button" className="link-btn" onClick={() => setMode('signup')}>
                   Create an account
                 </button>
