@@ -9,7 +9,7 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ firstName, onComplete, firstTime = false }: WelcomeScreenProps) {
   useEffect(() => {
-    const t = setTimeout(onComplete, 1600);
+    const t = setTimeout(onComplete, 3000);
     return () => clearTimeout(t);
   }, [onComplete]);
 
