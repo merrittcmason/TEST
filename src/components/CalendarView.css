@@ -443,7 +443,7 @@
 }
 
 .event-modal h3 { margin: 0 0 8px 0; color: var(--text-primary); font-size: clamp(16px, 2vw, 20px); font-weight: 800; }
-.event-details p { margin: 6px 0; color: var(--text-secondary); font-size: 14px; }
+.event-details p { margin: 6px 0; color: var(--text-secondary); font-size: clamp(12px, 1.6vw, 14px); }
 .event-details strong { color: var(--text-primary); }
 
 .event-edit-modal {
