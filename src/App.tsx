@@ -56,15 +56,18 @@ function AppContent() {
       }
       const u = await DatabaseService.getUser(user.id);
       if (!active) return;
+      if (!u) {
+        await supabase.auth.signOut();
+        setDbUser(null);
+        return;
+      }
       setDbUser(u);
-      if (u) {
-        setFirstName(u.first_name || 'User');
-        setNeedsProfile(!u.profile_completed);
-        if (u.profile_completed && u.first_name) {
-          setFirstTime(!u.last_login_at);
-          setShowWelcome(true);
-          setTimeout(() => active && setShowWelcome(false), 3000);
-        }
+      setFirstName(u.first_name || 'User');
+      setNeedsProfile(!u.profile_completed);
+      if (u.profile_completed && u.first_name) {
+        setFirstTime(!u.last_login_at);
+        setShowWelcome(true);
+        setTimeout(() => active && setShowWelcome(false), 3000);
       }
     };
     if (ready && !authLoading) load();
