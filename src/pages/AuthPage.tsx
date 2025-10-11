@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { DatabaseService } from '../services/database';
+import { supabase } from '../lib/supabase';
 import './AuthPage.css';
 
 function scorePassword(pw: string) {
@@ -16,45 +17,138 @@ function scorePassword(pw: string) {
   return '';
 }
 
+function validUsernameFormat(v: string) {
+  return /^[A-Za-z][A-Za-z0-9_]{3,11}$/.test(v);
+}
+
+function validEmailDotCom(v: string) {
+  const e = v.toLowerCase().trim();
+  if (!e.includes('@')) return false;
+  return e.endsWith('.com');
+}
+
+function parseIntSafe(s: string) {
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
+function isValidDate(y: number, m: number, d: number) {
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+function ageOnDate(y: number, m: number, d: number, ref: Date) {
+  let a = ref.getFullYear() - y;
+  const mm = ref.getMonth() + 1;
+  const dd = ref.getDate();
+  if (mm < m || (mm === m && dd < d)) a--;
+  return a;
+}
+
 export function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [signinError, setSigninError] = useState('');
   const [loading, setLoading] = useState(false);
+
   const [username, setUsername] = useState('');
+  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameChecking, setUsernameChecking] = useState(false);
+
   const [email2, setEmail2] = useState('');
+  const [email2Touched, setEmail2Touched] = useState(false);
+
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
+  const [pw2Active, setPw2Active] = useState(false);
+
   const [dobMonth, setDobMonth] = useState('');
   const [dobDay, setDobDay] = useState('');
   const [dobYear, setDobYear] = useState('');
+  const [dobTouchedM, setDobTouchedM] = useState(false);
+  const [dobTouchedD, setDobTouchedD] = useState(false);
+  const [dobTouchedY, setDobTouchedY] = useState(false);
+
   const [agreeTos, setAgreeTos] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [optInEmail, setOptInEmail] = useState(false);
   const [signupError, setSignupError] = useState('');
+
   const { signIn, signUp, signInWithOAuth } = useAuth();
 
   const pwStrength = useMemo(() => scorePassword(pw1), [pw1]);
-  const reqLen = pw1.length >= 8;
-  const reqLower = /[a-z]/.test(pw1);
-  const reqUpper = /[A-Z]/.test(pw1);
-  const reqDigit = /\d/.test(pw1);
-  const reqSymbol = /[^A-Za-z0-9]/.test(pw1);
-  const pwMatch = pw1 && pw2 && pw1 === pw2;
+  const pwMatch = pw1.length > 0 && pw2.length > 0 && pw1 === pw2;
+
+  const usernameFormatOk = validUsernameFormat(username.trim());
+  const email2Valid = validEmailDotCom(email2);
+
+  const mNum = parseIntSafe(dobMonth);
+  const dNum = parseIntSafe(dobDay);
+  const yNum = parseIntSafe(dobYear);
+  const fullDateValid = mNum !== null && dNum !== null && yNum !== null && isValidDate(yNum, mNum, dNum);
+  const today = new Date();
+  const ageValid =
+    fullDateValid &&
+    (() => {
+      const age = ageOnDate(yNum as number, mNum as number, dNum as number, today);
+      return age >= 9 && age <= 105;
+    })();
+
+  const dobFieldValidM = mNum !== null && mNum >= 1 && mNum <= 12;
+  const dobFieldValidD = dNum !== null && dNum >= 1 && dNum <= 31 && (mNum === null || isValidDate(yNum ?? 2000, mNum, dNum));
+  const dobFieldValidY =
+    yNum !== null &&
+    yNum >= today.getFullYear() - 105 &&
+    yNum <= today.getFullYear() - 9;
+
+  useEffect(() => {
+    let t: any;
+    const val = username.trim();
+    if (!val || !usernameFormatOk) {
+      setUsernameAvailable(null);
+      setUsernameChecking(false);
+      return;
+    }
+    setUsernameChecking(true);
+    t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('username', val)
+          .limit(1);
+        if (error) {
+          setUsernameAvailable(null);
+        } else {
+          setUsernameAvailable((data || []).length === 0);
+        }
+      } catch {
+        setUsernameAvailable(null);
+      } finally {
+        setUsernameChecking(false);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [username, usernameFormatOk]);
 
   const signupInvalid =
-    !username.trim() ||
-    !email2.trim() ||
+    !usernameFormatOk ||
+    usernameAvailable !== true ||
+    !email2Valid ||
     !pw1 ||
     !pw2 ||
     !pwMatch ||
-    !(reqLen && reqLower && reqUpper && reqDigit && reqSymbol) ||
+    !dobFieldValidM ||
+    !dobFieldValidD ||
+    !dobFieldValidY ||
+    !fullDateValid ||
+    !ageValid ||
     !agreeTos ||
-    !agreePrivacy ||
-    !dobMonth ||
-    !dobDay ||
-    !dobYear;
+    !agreePrivacy;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,10 +159,11 @@ export function AuthPage() {
       if (mode === 'signin') {
         await signIn(email, password);
       } else {
-        const dob = `${dobYear.padStart(4, '0')}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`;
-        await signUp(email2.trim(), pw1, username.trim());
+        if (signupInvalid) throw new Error('Please fix the highlighted fields');
+        const dob = `${String(dobYear).padStart(4, '0')}-${String(dobMonth).padStart(2, '0')}-${String(dobDay).padStart(2, '0')}`;
+        await signUp(email2.trim().toLowerCase(), pw1, username.trim());
         await DatabaseService.upsertUserOnSignup({
-          email: email2.trim(),
+          email: email2.trim().toLowerCase(),
           username: username.trim(),
           dob,
           marketingOptIn: optInEmail,
@@ -96,6 +191,26 @@ export function AuthPage() {
       setLoading(false);
     }
   };
+
+  const usernameClass =
+    usernameTouched && (!usernameFormatOk || usernameAvailable === false)
+      ? 'error'
+      : usernameFormatOk && usernameAvailable === true
+      ? 'valid'
+      : '';
+
+  const email2Class =
+    email2Touched && !email2Valid ? 'error' : email2Valid ? 'valid' : '';
+
+  const pw2Class =
+    pw2Active && !pwMatch ? 'error' : pwMatch ? 'valid' : '';
+
+  const dobMClass =
+    dobTouchedM && !dobFieldValidM ? 'error' : dobFieldValidM ? 'valid' : '';
+  const dobDClass =
+    dobTouchedD && !dobFieldValidD ? 'error' : dobFieldValidD ? 'valid' : '';
+  const dobYClass =
+    dobTouchedY && !dobFieldValidY ? 'error' : dobFieldValidY ? 'valid' : '';
 
   return (
     <div className="auth-page">
@@ -206,36 +321,43 @@ export function AuthPage() {
             <form onSubmit={handleSubmit} className="auth-form signup-form" autoComplete="off">
               <div className="form-group">
                 <label htmlFor="username">Username</label>
-                <div className={`auth-input ${username.trim() ? 'valid' : ''}`}>
+                <div className={`auth-input ${usernameClass}`}>
                   <input
                     id="username"
                     type="text"
                     autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    onBlur={() => setUsernameTouched(true)}
                     placeholder="yourname"
                   />
+                  {usernameChecking && <span className="input-status warn">•</span>}
+                  {usernameTouched && !usernameFormatOk && <span className="input-status err">!</span>}
+                  {usernameFormatOk && usernameAvailable === true && <span className="input-status ok">✓</span>}
                 </div>
               </div>
 
               <div className="form-group">
                 <label htmlFor="email2">Email</label>
-                <div className={`auth-input ${email2.trim() ? 'valid' : ''}`}>
+                <div className={`auth-input ${email2Class}`}>
                   <input
                     id="email2"
                     type="email"
                     autoComplete="email"
                     value={email2}
                     onChange={(e) => setEmail2(e.target.value)}
+                    onBlur={() => setEmail2Touched(true)}
                     placeholder="you@example.com"
                     inputMode="email"
                   />
+                  {email2Valid && <span className="input-status ok">✓</span>}
+                  {email2Touched && !email2Valid && <span className="input-status err">!</span>}
                 </div>
               </div>
 
               <div className="form-group">
                 <label htmlFor="pw1">Password</label>
-                <div className={`auth-input ${reqLen && reqLower && reqUpper && reqDigit && reqSymbol ? 'valid' : ''}`}>
+                <div className={`auth-input ${pw1 ? 'valid' : ''}`}>
                   <input
                     id="pw1"
                     type="password"
@@ -248,61 +370,65 @@ export function AuthPage() {
                 <div className="password-meter">
                   <div className={`password-meter-fill ${pwStrength}`} />
                 </div>
-                <div className="password-requirements">
-                  <div className={`req ${reqLen ? 'ok' : ''}`}>8+ characters</div>
-                  <div className={`req ${reqLower ? 'ok' : ''}`}>1 lowercase</div>
-                  <div className={`req ${reqUpper ? 'ok' : ''}`}>1 uppercase</div>
-                  <div className={`req ${reqDigit ? 'ok' : ''}`}>1 digit</div>
-                  <div className={`req ${reqSymbol ? 'ok' : ''}`}>1 symbol</div>
-                  <div className={`req ${pwMatch ? 'ok' : ''}`}>Passwords match</div>
-                </div>
               </div>
 
               <div className="form-group">
                 <label htmlFor="pw2">Re-enter password</label>
-                <div className={`auth-input ${pwMatch ? 'valid' : ''} ${pw2 && !pwMatch ? 'error' : ''}`}>
+                <div className={`auth-input ${pw2Class}`}>
                   <input
                     id="pw2"
                     type="password"
                     autoComplete="new-password"
                     value={pw2}
+                    onFocus={() => setPw2Active(true)}
                     onChange={(e) => setPw2(e.target.value)}
                     placeholder="••••••••"
                   />
                 </div>
+                {pw2Active && !pwMatch && <div className="auth-error">Passwords do not match</div>}
               </div>
 
               <div className="form-group">
                 <label>Date of birth</label>
                 <div className="dob-row">
-                  <div className="auth-input">
+                  <div className={`auth-input ${dobMClass}`}>
                     <input
                       type="text"
                       placeholder="MM"
                       inputMode="numeric"
                       value={dobMonth}
+                      onFocus={() => setDobTouchedM(true)}
                       onChange={(e) => setDobMonth(e.target.value.replace(/\D/g, '').slice(0, 2))}
                     />
                   </div>
-                  <div className="auth-input">
+                  <div className={`auth-input ${dobDClass}`}>
                     <input
                       type="text"
                       placeholder="DD"
                       inputMode="numeric"
                       value={dobDay}
+                      onFocus={() => setDobTouchedD(true)}
                       onChange={(e) => setDobDay(e.target.value.replace(/\D/g, '').slice(0, 2))}
                     />
                   </div>
-                  <div className="auth-input">
+                  <div className={`auth-input ${dobYClass}`}>
                     <input
                       type="text"
                       placeholder="YYYY"
                       inputMode="numeric"
                       value={dobYear}
+                      onFocus={() => setDobTouchedY(true)}
                       onChange={(e) => setDobYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     />
                   </div>
                 </div>
+                {dobTouchedM || dobTouchedD || dobTouchedY ? (
+                  !fullDateValid ? (
+                    <div className="auth-error">Enter a valid date</div>
+                  ) : !ageValid ? (
+                    <div className="auth-error">You must be between 9 and 105 years old</div>
+                  ) : null
+                ) : null}
               </div>
 
               <div className="terms-box">
@@ -323,7 +449,7 @@ export function AuthPage() {
               {signupError && <div className="auth-error">{signupError}</div>}
 
               <div className="signup-actions">
-                <button type="submit" className="btn btn-primary auth-submit" disabled={loading || signupInvalid}>
+                <button type="submit" className="btn btn-primary auth-submit" disabled={loading || signupInvalid || usernameChecking}>
                   {loading ? 'Loading...' : 'Create Account'}
                 </button>
               </div>
