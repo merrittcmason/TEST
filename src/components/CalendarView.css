@@ -207,7 +207,6 @@
 
 .calendar-days {
   display: grid;
-  width: 0%
   grid-template-columns: repeat(7, 1fr);
   gap: var(--gap);
   border: 1px solid var(--border-color);
