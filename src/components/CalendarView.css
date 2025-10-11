@@ -228,8 +228,8 @@
   aspect-ratio: 3 / 4;
   padding: clamp(3px, 0.8vw, 6px);
   background: var(--bg-primary);
-  border-right: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
+  border-right: none;
+  border-bottom: none;
   border-radius: 0;
   cursor: pointer;
   transition: background-color .2s ease, transform .2s ease, outline-color .2s ease;
