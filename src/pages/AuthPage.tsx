@@ -384,7 +384,7 @@ export function AuthPage() {
                     <div className={`req ${reqUpper ? 'ok' : ''}`}>1 uppercase</div>
                     <div className={`req ${reqDigit ? 'ok' : ''}`}>1 digit</div>
                     <div className={`req ${reqSymbol ? 'ok' : ''}`}>1 symbol</div>
-match</div>
+
                   </div>
                 )}
               </div>
