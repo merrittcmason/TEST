@@ -87,6 +87,7 @@ export function AuthPage() {
   const reqUpper = /[A-Z]/.test(pw1);
   const reqDigit = /\d/.test(pw1);
   const reqSymbol = /[^A-Za-z0-9]/.test(pw1);
+  const pw1MeetsAll = reqLen && reqLower && reqUpper && reqDigit && reqSymbol;
   const pwMatch = pw1.length > 0 && pw2.length > 0 && pw1 === pw2;
 
   const usernameFormatOk = validUsernameFormat(username.trim());
@@ -145,8 +146,7 @@ export function AuthPage() {
     !usernameFormatOk ||
     usernameAvailable !== true ||
     !email2Valid ||
-    !pw1 ||
-    !pw2 ||
+    !pw1MeetsAll ||
     !pwMatch ||
     !dobFieldValidM ||
     !dobFieldValidD ||
@@ -205,14 +205,9 @@ export function AuthPage() {
         : 'error'
       : '';
 
-  const email2Class =
-    email2Active
-      ? email2Valid
-        ? 'valid'
-        : 'error'
-      : '';
+  const email2Class = email2Active ? (email2Valid ? 'valid' : 'error') : '';
 
-  const pw1Class = pw1Active ? (pw1 ? 'valid' : 'error') : '';
+  const pw1Class = pw1Active ? (pw1MeetsAll ? 'valid' : 'error') : '';
   const pw2Class = pw2Active ? (pwMatch ? 'valid' : 'error') : '';
 
   const dobMClass = dobMActive ? (dobFieldValidM ? 'valid' : 'error') : '';
