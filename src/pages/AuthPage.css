@@ -156,6 +156,7 @@
 
 .auth-input.valid input {
   border-color: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
 }
 
 .input-status {
@@ -566,6 +567,7 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
 .auth-container.signup .terms-item input[type="checkbox"],
 .auth-container.mode-signup .terms-item input[type="checkbox"] {
   appearance: none;
@@ -601,6 +603,7 @@
   background-position: center;
   background-size: 12px 12px;
 }
+
 .auth-container.signup .terms-item input[type="checkbox"],
 .auth-container.mode-signup .terms-item input[type="checkbox"] {
   width: 14px;
@@ -623,6 +626,7 @@
   background-position: center;
   background-size: 10px 10px;
 }
+
 .auth-container.signup .terms-item input[type="checkbox"],
 .auth-container.mode-signup .terms-item input[type="checkbox"] {
   all: unset;
@@ -663,7 +667,17 @@
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
+
 .auth-container.signup,
 .auth-container.mode-signup {
   padding-bottom: 32px;
+}
+
+.signup-form .form-group .auth-error {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--error);
+  font-size: 0.85rem;
+  margin-top: 6px;
 }
