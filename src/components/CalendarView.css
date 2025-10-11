@@ -216,7 +216,7 @@
 }
 
 .calendar-day {
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 4;
   padding: clamp(3px, 0.8vw, 6px);
   background: var(--bg-primary);
   border: 0;
