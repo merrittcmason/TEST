@@ -384,8 +384,7 @@ export function AuthPage() {
                     <div className={`req ${reqUpper ? 'ok' : ''}`}>1 uppercase</div>
                     <div className={`req ${reqDigit ? 'ok' : ''}`}>1 digit</div>
                     <div className={`req ${reqSymbol ? 'ok' : ''}`}>1 symbol</div>
-                    <div className={`req ${pwMatch ? 'ok' : ''}`}>Passwords match</div>
-                  </div>
+                    
                 )}
               </div>
 
@@ -402,6 +401,7 @@ export function AuthPage() {
                     placeholder="••••••••"
                   />
                 </div>
+                {pw2Active && !pwMatch && <div className="auth-error">Passwords do not match</div>}
               </div>
 
               <div className="form-group">
