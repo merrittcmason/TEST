@@ -242,8 +242,8 @@
   min-height: calc(var(--day-min) * 1.5);
 }
 
-.calendar-day:nth-child(7n) { border-right: 0; }
-.calendar-day:nth-last-child(-n + 7) { border-bottom: 0; }
+.calendar-day:nth-child(7n) { border-right: 1px solid var(--border-color); }
+.calendar-day:nth-last-child(-n + 7) { border-bottom: 1px solid var(--border-color); }
 
 .calendar-day:hover { background-color: var(--bg-hover); transform: translateY(-1px); }
 .calendar-day:focus,
