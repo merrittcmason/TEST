@@ -9,7 +9,7 @@
 .calendar-view {
   width: 100%;
   margin: 0;
-  padding: clamp(10px, 1.4vw, 16px);
+  padding: 0;
   background: var(--glass-bg, var(--bg-tertiary));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
