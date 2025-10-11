@@ -280,6 +280,10 @@
 
 :root[data-theme='dark'] .day-event { color: #0a0f14; }
 :root[data-theme='light'] .day-event { color: #06111a; }
+:root[data-theme='light'] .day-event {
+  color: #ffffff;
+}
+
 
 .day-event-more {
   text-align: left;
