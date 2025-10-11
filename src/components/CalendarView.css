@@ -241,7 +241,12 @@
 .calendar-day:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
 .calendar-day.today { background-color: var(--bg-hover); outline: 2px solid var(--accent-primary); outline-offset: -2px; }
 
-.calendar-day.other-month { opacity: 0.5; }
+.calendar-day.other-month { opacity: 1; } /* keep borders fully visible */
+.calendar-day.other-month .day-number { opacity: .5; }
+.calendar-day.other-month .day-events { opacity: .5; }
+.calendar-day.other-month .day-event { opacity: .5; }
+.calendar-day.other-month .day-event-more { opacity: .5; }
+
 
 :root[data-theme='dark'] .calendar-day.today { outline: 2px solid #ffffff; outline-offset: -2px; }
 :root[data-theme='light'] .calendar-day.today { outline: 2px solid #000000; outline-offset: -2px; }
