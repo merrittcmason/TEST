@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { HamburgerMenu } from '../components/HamburgerMenu';
-import { WeekAtAGlance } from '../components/WeekAtAGlance';
+import { WeekAtAGlance } from '../components/DailyEvents';
 import { CalendarView } from '../components/CalendarView';
 import { EventInput } from '../components/EventInput';
 import type { ParsedEvent } from '../services/openai';
