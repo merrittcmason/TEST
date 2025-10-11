@@ -190,7 +190,12 @@
   cursor: pointer;
 }
 
-.calendar-grid { width: 100%; overflow: visible; }
+.calendar-grid { 
+  width: 100%; 
+  overflow: visible; 
+  padding: clamp(10px, 1.4vw, 16px);
+  margin-bottom: 0;
+}
 
 .calendar-weekdays {
   display: grid;
