@@ -209,7 +209,6 @@ export function AuthPage() {
           <div className="back-top">
             <button type="button" className="back-btn" onClick={() => setMode('signin')}>
               <span className="back-icon">←</span>
-              <span>Back</span>
             </button>
           </div>
         )}
