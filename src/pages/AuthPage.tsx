@@ -55,12 +55,12 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   const [username, setUsername] = useState('');
-  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [usernameActive, setUsernameActive] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [usernameChecking, setUsernameChecking] = useState(false);
 
   const [email2, setEmail2] = useState('');
-  const [email2Touched, setEmail2Touched] = useState(false);
+  const [email2Active, setEmail2Active] = useState(false);
 
   const [pw1, setPw1] = useState('');
   const [pw1Active, setPw1Active] = useState(false);
@@ -70,9 +70,9 @@ export function AuthPage() {
   const [dobMonth, setDobMonth] = useState('');
   const [dobDay, setDobDay] = useState('');
   const [dobYear, setDobYear] = useState('');
-  const [dobTouchedM, setDobTouchedM] = useState(false);
-  const [dobTouchedD, setDobTouchedD] = useState(false);
-  const [dobTouchedY, setDobTouchedY] = useState(false);
+  const [dobMActive, setDobMActive] = useState(false);
+  const [dobDActive, setDobDActive] = useState(false);
+  const [dobYActive, setDobYActive] = useState(false);
 
   const [agreeTos, setAgreeTos] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
@@ -199,24 +199,25 @@ export function AuthPage() {
   };
 
   const usernameClass =
-    usernameTouched && (!usernameFormatOk || usernameAvailable === false)
-      ? 'error'
-      : usernameFormatOk && usernameAvailable === true
-      ? 'valid'
+    usernameActive
+      ? usernameFormatOk && usernameAvailable === true
+        ? 'valid'
+        : 'error'
       : '';
 
   const email2Class =
-    email2Touched && !email2Valid ? 'error' : email2Valid ? 'valid' : '';
+    email2Active
+      ? email2Valid
+        ? 'valid'
+        : 'error'
+      : '';
 
-  const pw2Class =
-    pw2Active && !pwMatch ? 'error' : pwMatch ? 'valid' : '';
+  const pw1Class = pw1Active ? (pw1 ? 'valid' : 'error') : '';
+  const pw2Class = pw2Active ? (pwMatch ? 'valid' : 'error') : '';
 
-  const dobMClass =
-    dobTouchedM && !dobFieldValidM ? 'error' : dobFieldValidM ? 'valid' : '';
-  const dobDClass =
-    dobTouchedD && !dobFieldValidD ? 'error' : dobFieldValidD ? 'valid' : '';
-  const dobYClass =
-    dobTouchedY && !dobFieldValidY ? 'error' : dobFieldValidY ? 'valid' : '';
+  const dobMClass = dobMActive ? (dobFieldValidM ? 'valid' : 'error') : '';
+  const dobDClass = dobDActive ? (dobFieldValidD ? 'valid' : 'error') : '';
+  const dobYClass = dobYActive ? (dobFieldValidY ? 'valid' : 'error') : '';
 
   return (
     <div className="auth-page">
@@ -334,12 +335,9 @@ export function AuthPage() {
                     autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    onFocus={() => setUsernameTouched(true)}
+                    onFocus={() => setUsernameActive(true)}
                     placeholder="yourname"
                   />
-                  {usernameChecking && <span className="input-status warn">•</span>}
-                  {usernameTouched && !usernameFormatOk && <span className="input-status err">!</span>}
-                  {usernameFormatOk && usernameAvailable === true && <span className="input-status ok">✓</span>}
                 </div>
               </div>
 
@@ -352,18 +350,16 @@ export function AuthPage() {
                     autoComplete="email"
                     value={email2}
                     onChange={(e) => setEmail2(e.target.value)}
-                    onFocus={() => setEmail2Touched(true)}
+                    onFocus={() => setEmail2Active(true)}
                     placeholder="you@example.com"
                     inputMode="email"
                   />
-                  {email2Valid && <span className="input-status ok">✓</span>}
-                  {email2Touched && !email2Valid && <span className="input-status err">!</span>}
                 </div>
               </div>
 
               <div className="form-group">
                 <label htmlFor="pw1">Password</label>
-                <div className={`auth-input ${pw1 ? 'valid' : ''}`}>
+                <div className={`auth-input ${pw1Class}`}>
                   <input
                     id="pw1"
                     type="password"
@@ -377,14 +373,14 @@ export function AuthPage() {
                 <div className="password-meter">
                   <div className={`password-meter-fill ${pwStrength}`} />
                 </div>
-                {(pw1Active || pw1.length > 0) && (
+                {pw1Active && (
                   <div className="password-requirements">
                     <div className={`req ${reqLen ? 'ok' : ''}`}>8+ characters</div>
                     <div className={`req ${reqLower ? 'ok' : ''}`}>1 lowercase</div>
                     <div className={`req ${reqUpper ? 'ok' : ''}`}>1 uppercase</div>
                     <div className={`req ${reqDigit ? 'ok' : ''}`}>1 digit</div>
                     <div className={`req ${reqSymbol ? 'ok' : ''}`}>1 symbol</div>
-
+                    <div className={`req ${pwMatch ? 'ok' : ''}`}>Passwords match</div>
                   </div>
                 )}
               </div>
@@ -414,7 +410,7 @@ export function AuthPage() {
                       placeholder="MM"
                       inputMode="numeric"
                       value={dobMonth}
-                      onFocus={() => setDobTouchedM(true)}
+                      onFocus={() => setDobMActive(true)}
                       onChange={(e) => setDobMonth(e.target.value.replace(/\D/g, '').slice(0, 2))}
                     />
                   </div>
@@ -424,7 +420,7 @@ export function AuthPage() {
                       placeholder="DD"
                       inputMode="numeric"
                       value={dobDay}
-                      onFocus={() => setDobTouchedD(true)}
+                      onFocus={() => setDobDActive(true)}
                       onChange={(e) => setDobDay(e.target.value.replace(/\D/g, '').slice(0, 2))}
                     />
                   </div>
@@ -434,12 +430,12 @@ export function AuthPage() {
                       placeholder="YYYY"
                       inputMode="numeric"
                       value={dobYear}
-                      onFocus={() => setDobTouchedY(true)}
+                      onFocus={() => setDobYActive(true)}
                       onChange={(e) => setDobYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
                     />
                   </div>
                 </div>
-                {dobTouchedM || dobTouchedD || dobTouchedY ? (
+                {(dobMActive || dobDActive || dobYActive) ? (
                   !fullDateValid ? (
                     <div className="auth-error">Enter a valid date</div>
                   ) : !ageValid ? (
