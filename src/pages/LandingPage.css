@@ -1,18 +1,19 @@
 .landing-page {
   min-height: 100vh;
   background-color: var(--bg-primary);
-  padding-bottom: 80px;
+  padding-top: 80px;
+  padding-bottom: 60px;
 }
 
 .landing-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 80px 16px 24px;
+  padding: 70px 12px 20px;
 }
 
 .landing-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 
 .landing-title {
@@ -25,20 +26,21 @@
 .landing-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 12px;
 }
 
 @media (min-width: 768px) {
   .landing-container {
-    padding: 100px 24px 24px;
+    padding: 90px 16px 20px;
   }
 
   .landing-title {
-    font-size: 2.5rem;
+    font-size: 2.4rem;
   }
 }
+
 :root {
-  --edge-pad: clamp(8px, 2.2vw, 16px);
+  --edge-pad: clamp(8px, 1.5vw, 14px);
 }
 
 html, body, .landing-page { overflow-x: hidden; }
@@ -46,8 +48,9 @@ html, body, .landing-page { overflow-x: hidden; }
 .landing-rail {
   width: 100%;
   padding-inline: var(--edge-pad);
+  padding-top: 20px;
   display: grid;
-  gap: clamp(12px, 2.2vw, 20px);
+  gap: clamp(6px, 1.5vw, 12px);
   box-sizing: border-box;
   margin: 0 auto;
 }
@@ -64,7 +67,6 @@ html, body, .landing-page { overflow-x: hidden; }
   display: block;
   box-sizing: border-box;
 }
-
 
 .event-input-root {
   left: var(--edge-pad);
