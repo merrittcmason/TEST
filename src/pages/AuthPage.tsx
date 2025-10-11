@@ -63,6 +63,7 @@ export function AuthPage() {
   const [email2Touched, setEmail2Touched] = useState(false);
 
   const [pw1, setPw1] = useState('');
+  const [pw1Active, setPw1Active] = useState(false);
   const [pw2, setPw2] = useState('');
   const [pw2Active, setPw2Active] = useState(false);
 
@@ -81,6 +82,11 @@ export function AuthPage() {
   const { signIn, signUp, signInWithOAuth } = useAuth();
 
   const pwStrength = useMemo(() => scorePassword(pw1), [pw1]);
+  const reqLen = pw1.length >= 8;
+  const reqLower = /[a-z]/.test(pw1);
+  const reqUpper = /[A-Z]/.test(pw1);
+  const reqDigit = /\d/.test(pw1);
+  const reqSymbol = /[^A-Za-z0-9]/.test(pw1);
   const pwMatch = pw1.length > 0 && pw2.length > 0 && pw1 === pw2;
 
   const usernameFormatOk = validUsernameFormat(username.trim());
@@ -328,7 +334,7 @@ export function AuthPage() {
                     autoComplete="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    onBlur={() => setUsernameTouched(true)}
+                    onFocus={() => setUsernameTouched(true)}
                     placeholder="yourname"
                   />
                   {usernameChecking && <span className="input-status warn">•</span>}
@@ -346,7 +352,7 @@ export function AuthPage() {
                     autoComplete="email"
                     value={email2}
                     onChange={(e) => setEmail2(e.target.value)}
-                    onBlur={() => setEmail2Touched(true)}
+                    onFocus={() => setEmail2Touched(true)}
                     placeholder="you@example.com"
                     inputMode="email"
                   />
@@ -363,6 +369,7 @@ export function AuthPage() {
                     type="password"
                     autoComplete="new-password"
                     value={pw1}
+                    onFocus={() => setPw1Active(true)}
                     onChange={(e) => setPw1(e.target.value)}
                     placeholder="••••••••"
                   />
@@ -370,6 +377,16 @@ export function AuthPage() {
                 <div className="password-meter">
                   <div className={`password-meter-fill ${pwStrength}`} />
                 </div>
+                {(pw1Active || pw1.length > 0) && (
+                  <div className="password-requirements">
+                    <div className={`req ${reqLen ? 'ok' : ''}`}>8+ characters</div>
+                    <div className={`req ${reqLower ? 'ok' : ''}`}>1 lowercase</div>
+                    <div className={`req ${reqUpper ? 'ok' : ''}`}>1 uppercase</div>
+                    <div className={`req ${reqDigit ? 'ok' : ''}`}>1 digit</div>
+                    <div className={`req ${reqSymbol ? 'ok' : ''}`}>1 symbol</div>
+                    <div className={`req ${pwMatch ? 'ok' : ''}`}>Passwords match</div>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
