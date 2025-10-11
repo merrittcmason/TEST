@@ -23,9 +23,9 @@ export function LandingPage({ onNavigate, onDateClick, onEventsExtracted }: Land
 
   return (
     <div className="landing-page">
-      {!modalActive && <HamburgerMenu onNavigate={onNavigate} />}
+      <HamburgerMenu onNavigate={onNavigate} />
 
-      <div className="landing-rail">
+      <div className="landing-rail" style={{ marginTop: '80px' }}>
         {!modalActive && (
           <section className="rail-card">
             <WeekAtAGlance onDateClick={handleDateSelect} />
