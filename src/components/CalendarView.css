@@ -206,14 +206,14 @@
 }
 
 .calendar-days {
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--gap);
   border: 1px solid var(--border-color);
-  border-radius: 18px; /* keep outer corners */
+  border-radius: 18px;
   overflow: hidden;
-  margin: 0;
-  padding: 0;
+  background: var(--bg-primary);
 }
-
 
 .calendar-day {
   aspect-ratio: 3 / 4;
