@@ -402,7 +402,6 @@ export function AuthPage() {
                     placeholder="••••••••"
                   />
                 </div>
-                {pw2Active && !pwMatch && <div className="auth-error">Passwords do not match</div>}
               </div>
 
               <div className="form-group">
