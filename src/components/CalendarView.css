@@ -9,7 +9,7 @@
 .calendar-view {
   width: 100%;
   margin: 0;
-  padding: clamp(4px, 0.84vw, 8px);
+  padding: clamp(10px, 1.4vw, 16px);
   background: var(--glass-bg, var(--bg-tertiary));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -208,9 +208,9 @@
 .calendar-days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 0;
+  gap: var(--gap);
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: 18px;
   overflow: hidden;
   background: var(--bg-primary);
 }
@@ -279,6 +279,7 @@
 }
 
 :root[data-theme='dark'] .day-event { color: #0a0f14; }
+:root[data-theme='light'] .day-event { color: #06111a; }
 :root[data-theme='light'] .day-event {
   color: #ffffff;
 }
