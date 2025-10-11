@@ -93,7 +93,6 @@ export function WeekAtAGlance({ onDateClick }: WeekAtAGlanceProps) {
 
   return (
     <div className="week-at-a-glance">
-      <h2 className="section-title">Today's Events</h2>
       <div className="today-schedule-card">
         <button className="schedule-header" onClick={() => onDateClick(today)}>
           <div className="schedule-date">
