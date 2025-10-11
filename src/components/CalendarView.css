@@ -214,15 +214,17 @@
 
 .calendar-days {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  width: 100%;
   gap: 0;
-  border: 1px solid var(--border-color);
+  border: none;
   border-radius: 0 0 18px 18px;
   overflow: hidden;
   background: var(--bg-primary);
   margin: 0;
   padding: 0;
 }
+
 
 .calendar-day {
   aspect-ratio: 3 / 4;
