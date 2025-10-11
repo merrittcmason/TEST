@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { DatabaseService } from '../services/database';
 import { useAuth } from '../contexts/AuthContext';
 import type { Database } from '../lib/supabase';
-import './WeekAtAGlance.css';
+import './DailyEvents.css';
 
 type Event = Database['public']['Tables']['events']['Row'];
 
