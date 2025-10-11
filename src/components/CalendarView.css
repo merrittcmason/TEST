@@ -210,7 +210,7 @@
   grid-template-columns: repeat(7, 1fr);
   gap: var(--gap);
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: 18px;
   overflow: hidden;
   background: var(--bg-primary);
 }
@@ -219,7 +219,7 @@
   aspect-ratio: 3 / 4;
   padding: clamp(3px, 0.8vw, 6px);
   background: var(--bg-primary);
-  border: 0;
+  border: 18px;
   border-right: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
   border-radius: 0;
@@ -241,12 +241,7 @@
 .calendar-day:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -2px; }
 .calendar-day.today { background-color: var(--bg-hover); outline: 2px solid var(--accent-primary); outline-offset: -2px; }
 
-.calendar-day.other-month { opacity: 1; } /* keep borders fully visible */
-.calendar-day.other-month .day-number { opacity: .5; }
-.calendar-day.other-month .day-events { opacity: .5; }
-.calendar-day.other-month .day-event { opacity: .5; }
-.calendar-day.other-month .day-event-more { opacity: .5; }
-
+.calendar-day.other-month { opacity: 0.5; }
 
 :root[data-theme='dark'] .calendar-day.today { outline: 2px solid #ffffff; outline-offset: -2px; }
 :root[data-theme='light'] .calendar-day.today { outline: 2px solid #000000; outline-offset: -2px; }
@@ -567,5 +562,3 @@
 
 .landing-rail .calendar-view { transform: none !important; }
 
-:root[data-theme='dark'] { --bg-hover-soft: rgba(255,255,255,0.06); }
-:root[data-theme='light'] { --bg-hover-soft: rgba(0,0,0,0.06); }
